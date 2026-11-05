@@ -1,0 +1,10 @@
+{
+  "_readme": ["fichero de bloqueo del fixture"],
+  "content-hash": "0000000000000000000000000000000000",
+  "packages": [
+    { "name": "monolog/monolog", "version": "1.24.0" },
+    { "name": "guzzlehttp/guzzle", "version": "6.3.0" },
+    { "name": "symfony/http-kernel", "version": "4.4.0" }
+  ],
+  "packages-dev": [], "platform": {}, "platform-dev": {}
+}

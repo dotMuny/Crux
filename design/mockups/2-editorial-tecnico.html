@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="es" data-mockup="editorial-tecnico">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Crux · Editorial técnico</title>
+<style>
+/* ── Dirección 2: editorial técnico ──────────────────────────────────────────
+   Premisa distinta a la maqueta 1: el informe ES la interfaz. A la izquierda un
+   índice de hallazgos; a la derecha, el hallazgo compuesto como una página que
+   se lee. Lo que ves en pantalla es lo que sale en el PDF, así que la UI y el
+   entregable comparten tipografía, escala y jerarquía.
+   Claro por defecto con oscuro de primera clase. Un solo acento petróleo; la
+   severidad vive en marcas tipográficas, no en bloques de color.
+   Tipografías locales: sin red, ni para las fuentes.                         */
+:root{
+  --bg:#FAFBFC; --surface:#FFFFFF; --sunken:#F1F3F6; --border:#E3E6EB;
+  --rule:#CBD1DA; --fg:#14181E; --fg-dim:#596373; --fg-faint:#8C96A5;
+  --accent:#0E6B66; --accent-soft:#E2F1F0;
+  --crit:#B4232F; --high:#A2520C; --med:#7A6007; --low:#1F5A93; --info:#6B7484;
+  --mark:rgba(180,35,47,.13);
+  --serif:"Liberation Serif","DejaVu Serif",Georgia,serif;
+  --sans:"Lato","Liberation Sans",system-ui,sans-serif;
+  --mono:"Noto Sans Mono","DejaVu Sans Mono",monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0D1014; --surface:#14181D; --sunken:#1A1F25; --border:#252B33;
+    --rule:#374050; --fg:#E7EAEF; --fg-dim:#97A0AC; --fg-faint:#6B7480;
+    --accent:#4FC7BB; --accent-soft:#12302E;
+    --crit:#FF6B77; --high:#FFA455; --med:#E3C25C; --low:#73AEE8; --info:#7F8795;
+    --mark:rgba(255,107,119,.16);
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0D1014; --surface:#14181D; --sunken:#1A1F25; --border:#252B33;
+  --rule:#374050; --fg:#E7EAEF; --fg-dim:#97A0AC; --fg-faint:#6B7480;
+  --accent:#4FC7BB; --accent-soft:#12302E;
+  --crit:#FF6B77; --high:#FFA455; --med:#E3C25C; --low:#73AEE8; --info:#7F8795;
+    --mark:rgba(255,107,119,.16);
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;background:var(--bg);color:var(--fg);
+  font:400 15px/1.6 var(--sans);-webkit-font-smoothing:antialiased
+}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+
+/* ── Cabecera ────────────────────────────────────────────────────────────── */
+header{
+  display:flex;align-items:center;gap:22px;flex-wrap:wrap;
+  padding-block:16px;
+  padding-left:max(20px,env(safe-area-inset-left,0px));
+  padding-right:max(20px,env(safe-area-inset-right,0px));
+  border-bottom:1px solid var(--border);background:var(--surface)
+}
+.logo{
+  font:700 19px/1 var(--serif);letter-spacing:-.01em;display:flex;align-items:center;gap:10px
+}
+.logo em{
+  font:400 10px var(--sans);letter-spacing:.17em;text-transform:uppercase;
+  color:var(--accent);font-style:normal;border:1px solid var(--accent);
+  border-radius:2px;padding:2px 6px
+}
+header .ctx{font:400 13px var(--mono);color:var(--fg-dim)}
+header .ctx b{color:var(--fg);font-weight:400}
+header .sp{flex:1}
+.ghost{
+  border:1px solid var(--border);border-radius:3px;padding:6px 12px;
+  font-size:13px;color:var(--fg-dim)
+}
+.ghost:hover{border-color:var(--rule);color:var(--fg)}
+
+/* ── Resumen ejecutivo: lo primero que lee quien decide ─────────────────── */
+.summary{
+  display:flex;flex-wrap:wrap;gap:26px 46px;align-items:flex-start;
+  justify-content:space-between;
+  padding:26px max(20px,env(safe-area-inset-right,0px)) 26px max(20px,env(safe-area-inset-left,0px));
+  border-bottom:1px solid var(--border);background:var(--surface)
+}
+.summary .lede{min-width:0;flex:1 1 340px;max-width:58ch}
+.summary .kpis{display:flex;gap:40px;flex-wrap:wrap;align-items:flex-start}
+.summary .lede h1{
+  margin:0 0 7px;font:400 25px/1.25 var(--serif);text-wrap:balance;letter-spacing:-.012em
+}
+.summary .lede p{margin:0;color:var(--fg-dim);font-size:14px;max-width:56ch}
+.summary .lede p b{color:var(--crit);font-weight:700}
+.kpi{min-width:0}
+.kpi dt{
+  font:600 9.5px var(--sans);letter-spacing:.14em;text-transform:uppercase;
+  color:var(--fg-faint);margin-bottom:5px;white-space:nowrap
+}
+.kpi dd{
+  margin:0;font:400 27px/1 var(--serif);font-variant-numeric:tabular-nums;
+  letter-spacing:-.02em
+}
+.kpi dd span{font:400 12px var(--sans);color:var(--fg-dim);letter-spacing:0}
+.kpi.crit dd{color:var(--crit)}
+.egress-note{
+  display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--accent);
+  margin-top:11px
+}
+.egress-note svg{width:14px;height:14px;flex:none}
+
+/* ── Rejilla índice + lectura ───────────────────────────────────────────── */
+.wrap{display:grid;grid-template-columns:318px minmax(0,1fr);min-height:0;flex:1}
+.index{
+  border-right:1px solid var(--border);overflow-y:auto;background:var(--surface);
+  display:flex;flex-direction:column
+}
+.filters{
+  display:flex;gap:6px;flex-wrap:wrap;padding:12px 16px;
+  border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--surface);z-index:2
+}
+.filters button{
+  font:600 10px var(--sans);letter-spacing:.1em;text-transform:uppercase;
+  border:1px solid var(--border);border-radius:999px;padding:4px 10px;color:var(--fg-dim)
+}
+.filters button[aria-pressed="true"]{
+  background:var(--fg);border-color:var(--fg);color:var(--surface)
+}
+.index ol{list-style:none;margin:0;padding:6px 0 24px;counter-reset:f}
+.index li{counter-increment:f}
+.entry{
+  display:grid;grid-template-columns:26px minmax(0,1fr);gap:11px;width:100%;
+  text-align:left;padding:11px 16px;border-bottom:1px solid var(--border)
+}
+.entry:hover{background:var(--sunken)}
+.entry[aria-current="true"]{background:var(--accent-soft)}
+.entry .num{
+  font:400 11px var(--mono);color:var(--fg-faint);padding-top:3px;
+  font-variant-numeric:tabular-nums
+}
+.entry[aria-current="true"] .num{color:var(--accent)}
+.entry .t{font-size:13.5px;line-height:1.4;margin:0 0 4px;display:block}
+.entry .meta{
+  display:flex;gap:9px;align-items:center;font:400 11px var(--mono);color:var(--fg-faint);
+  flex-wrap:wrap
+}
+/* La severidad se marca con un filete tipográfico, no con un bloque de color. */
+.sevmark{
+  font:700 9.5px var(--sans);letter-spacing:.11em;text-transform:uppercase;
+  border-left:3px solid currentColor;padding-left:5px
+}
+.sev-critical{color:var(--crit)} .sev-high{color:var(--high)}
+.sev-medium{color:var(--med)} .sev-low{color:var(--low)} .sev-info{color:var(--info)}
+.entry .flag{
+  font:600 9.5px var(--sans);letter-spacing:.08em;text-transform:uppercase;color:var(--fg-faint)
+}
+.entry[data-state="false_positive"] .t{color:var(--fg-faint);text-decoration:line-through}
+
+/* ── Columna de lectura ─────────────────────────────────────────────────── */
+.read{overflow-y:auto;min-width:0}
+.page{
+  max-width:74ch;margin:0 auto;
+  padding:40px max(20px,env(safe-area-inset-right,0px)) 72px max(20px,env(safe-area-inset-left,0px))
+}
+.page .over{
+  display:flex;gap:13px;align-items:center;flex-wrap:wrap;margin-bottom:13px;
+  font:400 11.5px var(--mono);color:var(--fg-faint)
+}
+.page h2{
+  margin:0 0 16px;font:400 33px/1.18 var(--serif);letter-spacing:-.022em;text-wrap:balance
+}
+.page .url{
+  display:block;font:400 13px/1.6 var(--mono);color:var(--accent);
+  overflow-wrap:anywhere;padding:10px 13px;background:var(--sunken);
+  border-left:2px solid var(--accent);margin-bottom:28px
+}
+.facts{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(152px,1fr));gap:18px 24px;
+  padding:18px 0;border-block:1px solid var(--rule);margin-bottom:30px
+}
+.facts dt{
+  font:600 9.5px var(--sans);letter-spacing:.14em;text-transform:uppercase;
+  color:var(--fg-faint);margin-bottom:4px
+}
+.facts dd{margin:0;font:400 14px var(--mono);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.facts > div{min-width:0}
+.page h3{
+  margin:34px 0 11px;font:400 12px var(--sans);letter-spacing:.17em;
+  text-transform:uppercase;color:var(--fg-dim)
+}
+.page h3:first-of-type{margin-top:0}
+.page p{margin:0 0 18px;font-size:16px;line-height:1.72;max-width:66ch}
+.page .remedy{
+  background:var(--sunken);border-left:2px solid var(--accent);padding:17px 20px;
+  font-size:15px;line-height:1.68
+}
+.page .remedy p{margin:0;font-size:15px}
+figure{margin:0 0 26px}
+figcaption{
+  display:flex;gap:10px;align-items:center;justify-content:space-between;
+  font:600 10px var(--sans);letter-spacing:.13em;text-transform:uppercase;
+  color:var(--fg-faint);padding:0 0 7px;border-bottom:1px solid var(--border);margin-bottom:0
+}
+figcaption .copy{
+  font:400 11px var(--mono);letter-spacing:0;text-transform:none;color:var(--accent)
+}
+pre{
+  margin:0;padding:15px 17px;background:var(--sunken);overflow-x:auto;
+  font:400 12.5px/1.78 var(--mono);color:var(--fg);white-space:pre
+}
+pre .hk{color:var(--accent)}
+/* El fondo del resaltado es un token, para que funcione en los dos temas. */
+pre mark{background:var(--mark);color:var(--crit);padding:1px 3px;font-weight:700}
+.verdict{
+  display:flex;gap:11px;align-items:flex-start;padding:15px 17px;margin-bottom:26px;
+  background:var(--surface);border:1px solid var(--rule);font-size:14px;line-height:1.6
+}
+.verdict b{display:block;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--fg-dim);margin-bottom:3px}
+.triage{display:flex;gap:9px;flex-wrap:wrap;padding-top:30px;border-top:1px solid var(--rule)}
+.triage button{border:1px solid var(--rule);border-radius:3px;padding:8px 15px;font-size:13.5px;color:var(--fg-dim)}
+.triage button:hover{border-color:var(--fg-dim);color:var(--fg)}
+.triage .go{background:var(--accent);border-color:var(--accent);color:var(--surface);font-weight:700}
+
+@media (max-width:980px){
+  .wrap{grid-template-columns:minmax(0,1fr)}
+  .index{border-right:0;border-bottom:1px solid var(--border);max-height:44vh}
+  .page{padding-top:28px}
+  .page h2{font-size:26px}
+  .summary{grid-template-columns:minmax(0,1fr) repeat(auto-fit,minmax(70px,1fr));gap:20px}
+}
+</style>
+</head>
+<body>
+<header>
+  <span class="logo">Crux <em>informe vivo</em></span>
+  <span class="ctx" id="ctx"></span>
+  <span class="sp"></span>
+  <button class="ghost" id="theme">Tema</button>
+  <button class="ghost">Exportar PDF</button>
+</header>
+
+<section class="summary">
+  <div class="lede">
+    <h1 id="lede-h"></h1>
+    <p id="lede-p"></p>
+    <div class="egress-note">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+        <path d="M8 1.6 2.8 3.9v3.6c0 3 2.1 5.7 5.2 6.9 3.1-1.2 5.2-3.9 5.2-6.9V3.9L8 1.6Z"/><path d="m5.9 8.1 1.5 1.6 2.7-3"/>
+      </svg>
+      <span id="egress"></span>
+    </div>
+  </div>
+  <div class="kpis">
+    <dl class="kpi crit"><dt>Críticos</dt><dd id="k-crit"></dd></dl>
+    <dl class="kpi"><dt>Altos</dt><dd id="k-high"></dd></dl>
+    <dl class="kpi"><dt>Total</dt><dd id="k-total"></dd></dl>
+    <dl class="kpi"><dt>Objetivos</dt><dd id="k-targets"></dd></dl>
+    <dl class="kpi"><dt>Duración</dt><dd id="k-dur"></dd></dl>
+  </div>
+</section>
+
+<div class="wrap">
+  <nav class="index" aria-label="Índice de hallazgos">
+    <div class="filters" id="filters"></div>
+    <ol id="entries"></ol>
+  </nav>
+  <main class="read"><article class="page" id="page" aria-live="polite"></article></main>
+</div>
+
+<script src="data.js"></script>
+<script>
+const SEV_ES={critical:"crítica",high:"alta",medium:"media",low:"baja",info:"info"};
+const STATE_ES={new:"nuevo",confirmed:"confirmado",false_positive:"falso positivo",accepted_risk:"riesgo aceptado"};
+const ORDER=["critical","high","medium","low","info"];
+const scan=window.CRUX_SCAN, all=[...window.CRUX_FINDINGS].sort((a,b)=>ORDER.indexOf(a.sev)-ORDER.indexOf(b.sev));
+let active=new Set(), current=all[0].id;
+
+const n=s=>all.filter(f=>f.sev===s).length;
+document.getElementById("ctx").innerHTML=`<b>${scan.project}</b> · ${scan.scanId} · perfil ${scan.profile} · ${scan.started}`;
+document.getElementById("lede-h").textContent="Portal de facturación y dos aplicaciones internas más";
+document.getElementById("lede-p").innerHTML=
+  `El escaneo cubrió ${scan.targets} objetivos y ${scan.requests.toLocaleString("es")} peticiones. `+
+  `<b>Dos hallazgos críticos</b> permiten leer credenciales de producción y extraer datos de la base de clientes; `+
+  `ambos están en el portal de facturación y no requieren autenticación previa.`;
+document.getElementById("egress").textContent=scan.egress+" · alcance confinado a "+scan.scope[0];
+document.getElementById("k-crit").textContent=n("critical");
+document.getElementById("k-high").textContent=n("high");
+document.getElementById("k-total").textContent=all.length;
+document.getElementById("k-targets").textContent=scan.targets;
+document.getElementById("k-dur").innerHTML=`14<span> min</span>`;
+
+document.getElementById("filters").innerHTML=ORDER.map(s=>
+  `<button aria-pressed="false" data-s="${s}">${SEV_ES[s]} ${n(s)}</button>`).join("");
+document.querySelectorAll("#filters button").forEach(b=>b.addEventListener("click",()=>{
+  active.has(b.dataset.s)?active.delete(b.dataset.s):active.add(b.dataset.s);
+  b.setAttribute("aria-pressed",active.has(b.dataset.s));index();
+}));
+
+function shown(){return active.size?all.filter(f=>active.has(f.sev)):all}
+function index(){
+  document.getElementById("entries").innerHTML=shown().map((f,i)=>`
+    <li><button class="entry" data-id="${f.id}" data-state="${f.state}" aria-current="${f.id===current}">
+      <span class="num">${String(i+1).padStart(2,"0")}</span>
+      <span>
+        <span class="t">${f.title}</span>
+        <span class="meta">
+          <span class="sevmark sev-${f.sev}">${SEV_ES[f.sev]}</span>
+          <span>${f.host}</span>
+          ${f.state!=="new"?`<span class="flag">· ${STATE_ES[f.state]}</span>`:""}
+        </span>
+      </span>
+    </button></li>`).join("");
+  document.querySelectorAll(".entry").forEach(e=>e.addEventListener("click",()=>{
+    current=+e.dataset.id;index();page();
+    document.querySelector(".read").scrollTo({top:0,behavior:"smooth"});
+  }));
+}
+
+function esc(s){return s.replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]))}
+function http(raw,hl){
+  let h=esc(raw);
+  if(hl) h=h.replace(esc(hl),m=>`<mark>${m}</mark>`);
+  return h.replace(/^([A-Za-z-]+):/gm,'<span class="hk">$1</span>:');
+}
+function page(){
+  const f=all.find(x=>x.id===current);
+  document.getElementById("page").innerHTML=`
+    <div class="over">
+      <span class="sevmark sev-${f.sev}">severidad ${SEV_ES[f.sev]}</span>
+      <span>${f.source}:${f.check}</span>
+      <span>${f.cwe}</span>
+      ${f.cvss?`<span>CVSS ${f.cvss.toFixed(1)}</span>`:""}
+    </div>
+    <h2>${f.title}</h2>
+    <code class="url">${f.target}</code>
+    <dl class="facts">
+      <div><dt>Host</dt><dd>${f.host}</dd></div>
+      <div><dt>Dirección</dt><dd>${f.ip}</dd></div>
+      <div><dt>Estado de triaje</dt><dd>${STATE_ES[f.state]}</dd></div>
+      <div><dt>Observado desde</dt><dd>${f.firstSeen}</dd></div>
+    </dl>
+    <h3>Qué ocurre</h3>
+    <p>${f.desc}</p>
+    <h3>Cómo se corrige</h3>
+    <div class="remedy"><p>${f.fix}</p></div>
+    <h3>Evidencia</h3>
+    <figure>
+      <figcaption>Petición enviada <span class="copy">copiar como curl</span></figcaption>
+      <pre>${http(f.req)}</pre>
+    </figure>
+    <figure>
+      <figcaption>Respuesta recibida <span class="copy">${f.res.length} bytes</span></figcaption>
+      <pre>${http(f.res,f.highlight)}</pre>
+    </figure>
+    ${f.diff?`<div class="verdict"><div><b>Comparación entre roles</b>
+      La respuesta a la sesión del propietario y la de un usuario ajeno son idénticas byte a byte.
+      No existe comprobación de propiedad del recurso en el servidor.</div></div>`:""}
+    <div class="triage">
+      <button class="go">Confirmar hallazgo</button>
+      <button>Marcar falso positivo</button>
+      <button>Aceptar riesgo</button>
+      <button>Incluir en el informe</button>
+    </div>`;
+}
+
+const root=document.documentElement;
+document.getElementById("theme").addEventListener("click",()=>{
+  const dark=matchMedia("(prefers-color-scheme:dark)").matches;
+  const now=root.dataset.theme||(dark?"dark":"light");
+  root.dataset.theme=now==="dark"?"light":"dark";
+});
+index();page();
+</script>
+</body>
+</html>

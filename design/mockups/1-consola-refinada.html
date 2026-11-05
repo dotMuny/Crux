@@ -1,0 +1,521 @@
+<!doctype html>
+<html lang="es" data-mockup="consola-refinada">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Crux · Consola refinada</title>
+<style>
+/* ── Dirección 1: consola refinada ───────────────────────────────────────────
+   Superficies estratificadas en gris azulado, tipografía mono para todo dato
+   técnico y sans para la interfaz. El color saturado existe únicamente para
+   codificar severidad; lo interactivo se marca con un acento teal. Compromiso
+   deliberado con un solo tema oscuro: es una herramienta de sesión larga.
+   Todas las fuentes son locales — esta herramienta nunca pide nada a la red.  */
+:root{
+  --bg:#0A0D13; --surface:#111621; --surface-2:#171E2C; --surface-3:#1E2738;
+  --border:#212B3C; --border-strong:#303D55;
+  --fg:#E3E9F3; --fg-dim:#8B97AD; --fg-faint:#5A657C;
+  --accent:#3FD5BE; --accent-dim:#1E6D63;
+  --crit:#FF4D5E; --high:#FF8A3D; --med:#F2C14B; --low:#5E8FD4; --info:#6C778E;
+  --sans:"Lato","Liberation Sans",system-ui,sans-serif;
+  --mono:"Noto Sans Mono","DejaVu Sans Mono",monospace;
+  --r:5px;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0; background:var(--bg); color:var(--fg);
+  font:400 14px/1.5 var(--sans); -webkit-font-smoothing:antialiased;
+}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+::selection{background:var(--accent-dim);color:#fff}
+
+/* ── Rejilla general ─────────────────────────────────────────────────────── */
+.app{display:flex;flex-direction:column;height:100%}
+.main{display:grid;grid-template-columns:216px minmax(0,1fr) 440px;flex:1;min-height:0}
+
+/* ── Barra superior ──────────────────────────────────────────────────────── */
+.top{
+  display:flex;align-items:center;gap:20px;flex-wrap:wrap;
+  padding-block:11px;padding-left:max(18px,env(safe-area-inset-left,0px));
+  padding-right:max(18px,env(safe-area-inset-right,0px));
+  background:var(--surface);border-bottom:1px solid var(--border);
+}
+.brand{display:flex;align-items:baseline;gap:9px;font-weight:900;letter-spacing:.14em;font-size:13px}
+.brand i{
+  width:7px;height:7px;border-radius:50%;background:var(--accent);
+  box-shadow:0 0 0 3px rgba(63,213,190,.14);flex:none;align-self:center
+}
+.crumb{font:400 12.5px var(--mono);color:var(--fg-dim);display:flex;gap:8px;align-items:center;min-width:0}
+.crumb b{color:var(--fg);font-weight:400}
+.crumb s{text-decoration:none;color:var(--fg-faint)}
+.top .spacer{flex:1}
+.egress{
+  display:flex;align-items:center;gap:7px;font:500 11.5px var(--sans);
+  letter-spacing:.04em;color:var(--accent);
+  border:1px solid var(--accent-dim);border-radius:999px;padding:4px 11px 4px 9px;
+  background:rgba(63,213,190,.06)
+}
+.egress svg{width:12px;height:12px;flex:none}
+.kbd{
+  font:500 11px var(--mono);color:var(--fg-dim);border:1px solid var(--border-strong);
+  border-bottom-width:2px;border-radius:4px;padding:3px 7px;background:var(--surface-2)
+}
+
+/* ── Tira de métricas ────────────────────────────────────────────────────── */
+.metrics{
+  display:flex;gap:28px;align-items:flex-end;flex-wrap:wrap;
+  padding:14px max(18px,env(safe-area-inset-right,0px)) 15px max(18px,env(safe-area-inset-left,0px));
+  background:var(--surface);border-bottom:1px solid var(--border)
+}
+.stat{display:flex;flex-direction:column;gap:3px;min-width:0}
+.stat .k{font:600 10px var(--sans);letter-spacing:.13em;text-transform:uppercase;color:var(--fg-faint)}
+.stat .v{font:400 21px/1 var(--mono);font-variant-numeric:tabular-nums}
+.stat .v small{font-size:12px;color:var(--fg-dim)}
+.sevbar{display:flex;flex-direction:column;gap:7px;flex:1;min-width:230px}
+.sevbar .track{display:flex;height:9px;border-radius:2px;overflow:hidden;background:var(--surface-3)}
+.sevbar .track span{display:block}
+.sevbar .legend{display:flex;gap:15px;flex-wrap:wrap;font:400 11.5px var(--mono);color:var(--fg-dim)}
+.sevbar .legend b{color:var(--fg);font-weight:400;font-variant-numeric:tabular-nums}
+.dot{display:inline-block;width:7px;height:7px;border-radius:2px;margin-right:5px;vertical-align:1px}
+/* Tendencia entre escaneos: barras apiladas, el último escaneo destacado. */
+.trend{display:flex;gap:5px;align-items:flex-end;height:46px;overflow:hidden}
+.trend .col{display:flex;flex-direction:column;justify-content:flex-end;gap:1.5px;width:15px;opacity:.5}
+.trend .col:last-child{opacity:1}
+.trend .col span{display:block;border-radius:1px}
+.trend .col u{display:block;font:400 9px var(--mono);color:var(--fg-faint);text-decoration:none;margin-top:4px;text-align:center}
+
+/* ── Panel de facetas ────────────────────────────────────────────────────── */
+.rail{
+  background:var(--surface);border-right:1px solid var(--border);
+  overflow-y:auto;padding:16px 0 20px
+}
+.rail h3{
+  font:600 10px var(--sans);letter-spacing:.15em;text-transform:uppercase;
+  color:var(--fg-faint);margin:0 0 8px;padding:0 16px
+}
+.rail section{margin-bottom:22px}
+.facet{
+  display:flex;align-items:center;gap:9px;width:100%;text-align:left;
+  padding:5px 16px;font-size:13px;color:var(--fg-dim);
+  border-left:2px solid transparent
+}
+.facet:hover{background:var(--surface-2);color:var(--fg)}
+.facet[aria-pressed="true"]{
+  background:var(--surface-2);color:var(--fg);border-left-color:var(--accent)
+}
+.facet .n{margin-left:auto;font:400 11.5px var(--mono);color:var(--fg-faint);font-variant-numeric:tabular-nums}
+.facet[aria-pressed="true"] .n{color:var(--accent)}
+/* Progreso de tareas: el escaneo sigue corriendo mientras se tría. */
+.task{display:flex;align-items:center;gap:8px;padding:4px 16px;font:400 12px var(--mono);color:var(--fg-dim)}
+.task .pill{width:6px;height:6px;border-radius:50%;background:var(--fg-faint);flex:none}
+.task.done .pill{background:var(--accent-dim)}
+.task.running .pill{background:var(--accent);animation:pulse 1.6s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:.35}50%{opacity:1}}
+.task .n{margin-left:auto;font-size:11px;color:var(--fg-faint)}
+@media (prefers-reduced-motion:reduce){.task.running .pill{animation:none}}
+
+/* ── Tabla de hallazgos ──────────────────────────────────────────────────── */
+.list{display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--bg)}
+.listbar{
+  display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+  padding:9px 16px;border-bottom:1px solid var(--border);background:var(--surface)
+}
+.search{
+  flex:1;min-width:150px;display:flex;align-items:center;gap:8px;
+  background:var(--bg);border:1px solid var(--border);border-radius:var(--r);padding:5px 10px
+}
+.search input{
+  flex:1;min-width:0;background:none;border:0;color:var(--fg);
+  font:400 13px var(--mono);outline:none
+}
+.search input::placeholder{color:var(--fg-faint)}
+.count{font:400 12px var(--mono);color:var(--fg-dim);font-variant-numeric:tabular-nums}
+.rows{overflow-y:auto;flex:1;min-height:0}
+.row{
+  display:grid;grid-template-columns:3px 62px minmax(0,1fr) 178px 74px;
+  align-items:center;gap:11px;width:100%;text-align:left;
+  padding:9px 16px 9px 0;border-bottom:1px solid var(--border);color:var(--fg)
+}
+.row:hover{background:var(--surface)}
+.row[aria-selected="true"]{background:var(--surface-2)}
+.row .stripe{height:100%;min-height:38px;align-self:stretch;border-radius:0 2px 2px 0}
+.row .sev{
+  font:600 10px var(--sans);letter-spacing:.1em;text-transform:uppercase
+}
+.row .ttl{min-width:0}
+.row .ttl .t{
+  display:block;font-size:13.5px;line-height:1.35;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap
+}
+.row .ttl .m{
+  display:block;font:400 11.5px var(--mono);color:var(--fg-faint);margin-top:3px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap
+}
+.row .host{font:400 12px var(--mono);color:var(--fg-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row .state{font:600 9.5px var(--sans);letter-spacing:.08em;text-transform:uppercase;text-align:right;padding-right:2px}
+.row[data-state="new"] .state{color:var(--fg-faint)}
+.row[data-state="confirmed"] .state{color:var(--crit)}
+.row[data-state="false_positive"] .state{color:var(--fg-faint);text-decoration:line-through}
+.row[data-state="accepted_risk"] .state{color:var(--med)}
+.row[data-state="false_positive"] .ttl .t{color:var(--fg-faint)}
+
+/* ── Panel de detalle ────────────────────────────────────────────────────── */
+.detail{
+  background:var(--surface);border-left:1px solid var(--border);
+  overflow-y:auto;min-width:0;display:flex;flex-direction:column
+}
+.dhead{padding:16px 18px 14px;border-bottom:1px solid var(--border)}
+.dsev{display:flex;align-items:center;gap:9px;margin-bottom:9px;flex-wrap:wrap}
+.badge{
+  font:700 10px var(--sans);letter-spacing:.11em;text-transform:uppercase;
+  padding:3px 8px;border-radius:3px;color:#0A0D13
+}
+.chip{
+  font:400 11px var(--mono);color:var(--fg-dim);
+  border:1px solid var(--border-strong);border-radius:3px;padding:2px 7px
+}
+.dhead h1{margin:0;font:400 17.5px/1.32 var(--sans);text-wrap:balance}
+.dtarget{
+  display:block;margin-top:10px;font:400 12px/1.5 var(--mono);color:var(--accent);
+  overflow-wrap:anywhere
+}
+.meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:1px;background:var(--border)}
+.meta div{background:var(--surface);padding:9px 12px;min-width:0}
+.meta dt{font:600 9.5px var(--sans);letter-spacing:.12em;text-transform:uppercase;color:var(--fg-faint);margin:0 0 4px}
+.meta dd{margin:0;font:400 12.5px var(--mono);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.dbody{padding:16px 18px}
+.dbody h2{
+  font:600 10px var(--sans);letter-spacing:.14em;text-transform:uppercase;
+  color:var(--fg-faint);margin:0 0 7px
+}
+.dbody p{margin:0 0 17px;font-size:13.5px;line-height:1.62;color:#CBD4E2;max-width:62ch}
+.fix{
+  border-left:2px solid var(--accent-dim);padding-left:13px;
+}
+/* ── Visor de evidencia ──────────────────────────────────────────────────── */
+.tabs{display:flex;gap:1px;border-bottom:1px solid var(--border);background:var(--border);margin-top:4px}
+.tab{
+  flex:1;padding:8px 6px;background:var(--surface);color:var(--fg-faint);
+  font:600 10.5px var(--sans);letter-spacing:.09em;text-transform:uppercase
+}
+.tab:hover{color:var(--fg-dim)}
+.tab[aria-selected="true"]{background:var(--surface-3);color:var(--accent)}
+.ev{
+  margin:0;padding:13px 15px;overflow-x:auto;background:var(--surface-3);
+  font:400 11.5px/1.72 var(--mono);color:#B9C4D4;white-space:pre;
+  border-bottom:1px solid var(--border)
+}
+.ev mark{background:rgba(255,77,94,.17);color:#FFB3BA;padding:1px 2px;border-radius:2px}
+.ev .k{color:var(--accent)}
+.actions{
+  display:flex;gap:8px;flex-wrap:wrap;padding:14px 18px 22px;margin-top:auto;
+  border-top:1px solid var(--border)
+}
+.act{
+  border:1px solid var(--border-strong);border-radius:var(--r);padding:6px 12px;
+  font-size:12.5px;color:var(--fg-dim)
+}
+.act:hover{border-color:var(--accent-dim);color:var(--fg)}
+.act.primary{background:var(--accent);border-color:var(--accent);color:#06211E;font-weight:700}
+.act.primary:hover{background:#56E3CC}
+
+/* ── Paleta de comandos ──────────────────────────────────────────────────── */
+.palette{
+  position:fixed;inset:0;background:rgba(5,8,13,.72);display:flex;
+  align-items:flex-start;justify-content:center;padding:12vh 16px 0;z-index:20
+}
+.palette[hidden]{display:none!important}
+.pbox{
+  width:min(540px,100%);background:var(--surface-2);border:1px solid var(--border-strong);
+  border-radius:8px;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,.6)
+}
+.pbox input{
+  width:100%;background:none;border:0;border-bottom:1px solid var(--border);
+  padding:14px 16px;color:var(--fg);font:400 15px var(--mono);outline:none
+}
+.pbox ul{list-style:none;margin:0;padding:6px}
+.pbox li{
+  display:flex;gap:12px;align-items:center;padding:8px 11px;border-radius:var(--r);
+  font-size:13px;color:var(--fg-dim)
+}
+.pbox li:first-child{background:var(--surface-3);color:var(--fg)}
+.pbox li code{font:400 11px var(--mono);color:var(--fg-faint);margin-left:auto}
+
+/* ── Adaptación a pantallas estrechas ────────────────────────────────────── */
+@media (max-width:1180px){
+  .main{grid-template-columns:200px minmax(0,1fr)}
+  .detail{
+    grid-column:1/-1;border-left:0;border-top:1px solid var(--border);max-height:62vh
+  }
+  .row{grid-template-columns:3px 58px minmax(0,1fr) 72px}
+  .row .host{display:none}
+}
+@media (max-width:720px){
+  .main{grid-template-columns:minmax(0,1fr)}
+  .rail{border-right:0;border-bottom:1px solid var(--border);max-height:200px}
+  .metrics{gap:18px}
+  /* Sin sitio para la tendencia: se oculta el bloque entero,
+     no solo las barras, para no dejar el rótulo huérfano. */
+  .stat:has(.trend){display:none}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <span class="brand"><i></i>CRUX</span>
+    <span class="crumb"><b id="c-project"></b><s>/</s><span id="c-scan"></span><s>/</s><span id="c-profile"></span></span>
+    <span class="spacer"></span>
+    <span class="egress">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+        <path d="M8 1.6 2.8 3.9v3.6c0 3 2.1 5.7 5.2 6.9 3.1-1.2 5.2-3.9 5.2-6.9V3.9L8 1.6Z"/>
+        <path d="m5.9 8.1 1.5 1.6 2.7-3"/>
+      </svg>
+      <span id="c-egress"></span>
+    </span>
+    <span class="kbd">⌘K</span>
+  </header>
+
+  <div class="metrics">
+    <div class="sevbar">
+      <div class="track" id="m-track"></div>
+      <div class="legend" id="m-legend"></div>
+    </div>
+    <div class="stat"><span class="k">Objetivos</span><span class="v" id="m-targets"></span></div>
+    <div class="stat"><span class="k">Peticiones</span><span class="v" id="m-reqs"></span></div>
+    <div class="stat"><span class="k">Duración</span><span class="v" id="m-dur"></span></div>
+    <div class="stat">
+      <span class="k">Severidad por escaneo</span>
+      <div class="trend" id="m-trend"></div>
+    </div>
+  </div>
+
+  <div class="main">
+    <nav class="rail">
+      <section>
+        <h3>Severidad</h3>
+        <div id="f-sev"></div>
+      </section>
+      <section>
+        <h3>Origen</h3>
+        <div id="f-src"></div>
+      </section>
+      <section>
+        <h3>Estado</h3>
+        <div id="f-state"></div>
+      </section>
+      <section>
+        <h3>Tareas del escaneo</h3>
+        <div id="f-tasks"></div>
+      </section>
+    </nav>
+
+    <main class="list">
+      <div class="listbar">
+        <label class="search">
+          <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="var(--fg-faint)" stroke-width="1.7" aria-hidden="true"><circle cx="6.8" cy="6.8" r="4.5"/><path d="m10.4 10.4 3 3"/></svg>
+          <input id="q" type="search" placeholder="filtrar por título, host, CWE o check-id…" aria-label="Filtrar hallazgos">
+        </label>
+        <span class="count" id="count"></span>
+      </div>
+      <div class="rows" id="rows" role="listbox" aria-label="Hallazgos" tabindex="0"></div>
+    </main>
+
+    <aside class="detail" id="detail" aria-live="polite"></aside>
+  </div>
+</div>
+
+<div class="palette" id="palette" hidden>
+  <div class="pbox">
+    <input type="text" value="" placeholder="Escribe un comando o busca un hallazgo…" aria-label="Paleta de comandos">
+    <ul>
+      <li>Confirmar hallazgo seleccionado<code>⇧C</code></li>
+      <li>Marcar como falso positivo<code>⇧F</code></li>
+      <li>Abrir el grafo de superficie<code>G</code></li>
+      <li>Relanzar solo esta tarea<code>⇧R</code></li>
+      <li>Exportar informe (HTML · PDF · SARIF)<code>⇧E</code></li>
+    </ul>
+  </div>
+</div>
+
+<script src="data.js"></script>
+<script>
+const SEV = ["critical","high","medium","low","info"];
+const SEV_ES = {critical:"crítica",high:"alta",medium:"media",low:"baja",info:"info"};
+const STATE_ES = {new:"nuevo",confirmed:"confirmado",false_positive:"falso pos.",accepted_risk:"riesgo acept."};
+const color = s => getComputedStyle(document.documentElement).getPropertyValue(
+  {critical:"--crit",high:"--high",medium:"--med",low:"--low",info:"--info"}[s]).trim();
+
+const scan = window.CRUX_SCAN, all = window.CRUX_FINDINGS;
+let filters = {sev:new Set(), src:new Set(), state:new Set()}, query = "", selected = all[0].id;
+
+/* Cabecera y métricas */
+document.getElementById("c-project").textContent = scan.project;
+document.getElementById("c-scan").textContent = scan.scanId;
+document.getElementById("c-profile").textContent = scan.profile;
+document.getElementById("c-egress").textContent = scan.egress;
+document.getElementById("m-targets").textContent = scan.targets;
+document.getElementById("m-reqs").innerHTML = (scan.requests/1000).toFixed(1) + "<small>k</small>";
+document.getElementById("m-dur").textContent = scan.duration;
+
+const counts = s => all.filter(f => f.sev === s).length;
+document.getElementById("m-track").innerHTML = SEV.map(s =>
+  `<span style="flex:${counts(s)};background:${color(s)}"></span>`).join("");
+document.getElementById("m-legend").innerHTML = SEV.map(s =>
+  `<span><i class="dot" style="background:${color(s)}"></i>${SEV_ES[s]} <b>${counts(s)}</b></span>`).join("");
+
+// Las barras se escalan al total mayor para que la columna más alta llene
+// el contenedor sin desbordarlo sobre el rótulo.
+const maxTotal = Math.max(...scan.trend.map(t => t.critical+t.high+t.medium+t.low));
+const unit = 30 / maxTotal;
+document.getElementById("m-trend").innerHTML = scan.trend.map(t => {
+  const bars = [["critical",t.critical],["high",t.high],["medium",t.medium],["low",t.low]]
+    .map(([s,n]) => n ? `<span style="height:${(n*unit).toFixed(1)}px;background:${color(s)}"></span>` : "").join("");
+  return `<div class="col">${bars}<u>${t.scan.replace("sem ","")}</u></div>`;
+}).join("");
+
+/* Facetas */
+function facets(id, key, values, labels) {
+  document.getElementById(id).innerHTML = values.map(v =>
+    `<button class="facet" aria-pressed="false" data-key="${key}" data-val="${v}">
+       ${key==="sev" ? `<i class="dot" style="background:${color(v)}"></i>` : ""}
+       <span>${labels[v] || v}</span>
+       <span class="n">${all.filter(f => f[key === "state" ? "state" : key === "src" ? "source" : "sev"] === v).length}</span>
+     </button>`).join("");
+}
+facets("f-sev","sev",SEV,SEV_ES);
+facets("f-src","src",[...new Set(all.map(f=>f.source))],{});
+facets("f-state","state",["new","confirmed","false_positive","accepted_risk"],STATE_ES);
+
+document.getElementById("f-tasks").innerHTML = scan.tasks.map(t =>
+  `<div class="task ${t.status}"><span class="pill"></span>${t.name}<span class="n">${t.found||"·"}</span></div>`).join("");
+
+document.querySelectorAll(".facet").forEach(btn => btn.addEventListener("click", () => {
+  const {key, val} = btn.dataset, set = filters[key];
+  set.has(val) ? set.delete(val) : set.add(val);
+  btn.setAttribute("aria-pressed", set.has(val));
+  render();
+}));
+
+/* Lista */
+function visible() {
+  return all.filter(f => {
+    if (filters.sev.size && !filters.sev.has(f.sev)) return false;
+    if (filters.src.size && !filters.src.has(f.source)) return false;
+    if (filters.state.size && !filters.state.has(f.state)) return false;
+    if (query) {
+      const hay = `${f.title} ${f.host} ${f.cwe} ${f.check} ${f.target}`.toLowerCase();
+      if (!hay.includes(query.toLowerCase())) return false;
+    }
+    return true;
+  });
+}
+
+function render() {
+  const items = visible();
+  document.getElementById("count").textContent =
+    `${items.length} de ${all.length} hallazgos`;
+  document.getElementById("rows").innerHTML = items.map(f => `
+    <button class="row" role="option" data-id="${f.id}" data-state="${f.state}"
+            aria-selected="${f.id === selected}">
+      <span class="stripe" style="background:${color(f.sev)}"></span>
+      <span class="sev" style="color:${color(f.sev)}">${SEV_ES[f.sev]}</span>
+      <span class="ttl">
+        <span class="t">${f.title}</span>
+        <span class="m">${f.source}:${f.check} · ${f.cwe}${f.param ? " · param " + f.param : ""}</span>
+      </span>
+      <span class="host">${f.host}</span>
+      <span class="state">${STATE_ES[f.state]}</span>
+    </button>`).join("") || `<p style="padding:28px 16px;color:var(--fg-faint)">Ningún hallazgo con estos filtros.</p>`;
+
+  document.querySelectorAll(".row").forEach(r => r.addEventListener("click", () => {
+    selected = +r.dataset.id; render();
+  }));
+  detail(all.find(f => f.id === selected) || items[0]);
+}
+
+/* Detalle y evidencia */
+let tab = "res";
+function esc(s){return s.replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]))}
+function evidence(f) {
+  const raw = tab === "req" ? f.req : f.res;
+  let html = esc(raw);
+  if (tab === "res" && f.highlight) {
+    html = html.replace(esc(f.highlight), m => `<mark>${m}</mark>`);
+  }
+  // Resalta los nombres de cabecera para que el HTTP crudo se lea de un vistazo.
+  html = html.replace(/^([A-Za-z-]+):/gm, '<span class="k">$1</span>:');
+  return html;
+}
+function detail(f) {
+  if (!f) { document.getElementById("detail").innerHTML = ""; return; }
+  const hasDiff = !!f.diff;
+  document.getElementById("detail").innerHTML = `
+    <div class="dhead">
+      <div class="dsev">
+        <span class="badge" style="background:${color(f.sev)}">${SEV_ES[f.sev]}</span>
+        <span class="chip">${f.conf === "certain" ? "certeza alta" : "certeza media"}</span>
+        <span class="chip">${f.cwe}</span>
+        ${f.cvss ? `<span class="chip">CVSS ${f.cvss.toFixed(1)}</span>` : ""}
+      </div>
+      <h1>${f.title}</h1>
+      <code class="dtarget">${f.target}</code>
+    </div>
+    <dl class="meta">
+      <div><dt>Host</dt><dd>${f.host}</dd></div>
+      <div><dt>IP</dt><dd>${f.ip}</dd></div>
+      <div><dt>Origen</dt><dd>${f.source}</dd></div>
+      <div><dt>Visto desde</dt><dd>${f.firstSeen}</dd></div>
+    </dl>
+    <div class="dbody">
+      <h2>Qué ocurre</h2>
+      <p>${f.desc}</p>
+      <h2>Cómo se corrige</h2>
+      <p class="fix">${f.fix}</p>
+      <h2>Evidencia</h2>
+    </div>
+    <div class="tabs">
+      <button class="tab" data-tab="req" aria-selected="${tab==="req"}">Petición</button>
+      <button class="tab" data-tab="res" aria-selected="${tab==="res"}">Respuesta</button>
+      <button class="tab" data-tab="diff" aria-selected="${tab==="diff"}" ${hasDiff?"":"disabled style=opacity:.38"}>Diff de roles</button>
+    </div>
+    <pre class="ev">${tab === "diff" && hasDiff
+      ? `<span class="k">sesión propietaria (ana)</span>\n{"id":1001,"owner_id":1,"total":"1.240,00"}\n\n<span class="k">sesión ajena (luis)</span>\n<mark>{"id":1001,"owner_id":1,"total":"1.240,00"}</mark>\n\n→ respuestas idénticas: no hay control de acceso`
+      : evidence(f)}</pre>
+    <div class="actions">
+      <button class="act primary">Confirmar</button>
+      <button class="act">Falso positivo</button>
+      <button class="act">Riesgo aceptado</button>
+      <button class="act">Reenviar petición</button>
+    </div>`;
+  document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () => {
+    if (t.disabled) return; tab = t.dataset.tab; detail(f);
+  }));
+}
+
+/* Teclado: j/k para moverse, ⌘K para la paleta — el analista no suelta el teclado. */
+document.getElementById("q").addEventListener("input", e => { query = e.target.value; render(); });
+const palette = document.getElementById("palette");
+addEventListener("keydown", e => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+    e.preventDefault(); palette.hidden = !palette.hidden;
+    if (!palette.hidden) palette.querySelector("input").focus();
+    return;
+  }
+  if (e.key === "Escape") palette.hidden = true;
+  if (document.activeElement.tagName === "INPUT") return;
+  if (e.key === "j" || e.key === "k") {
+    const items = visible(), i = items.findIndex(f => f.id === selected);
+    const next = items[e.key === "j" ? Math.min(i+1, items.length-1) : Math.max(i-1, 0)];
+    if (next) { selected = next.id; render(); }
+  }
+});
+palette.addEventListener("click", e => { if (e.target === palette) palette.hidden = true; });
+
+render();
+</script>
+</body>
+</html>

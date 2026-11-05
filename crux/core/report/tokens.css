@@ -1,0 +1,133 @@
+/* Sistema de diseño de Crux — dirección "consola refinada".
+ *
+ * Fuente única de verdad del lenguaje visual. Lo consumen tres sitios:
+ *   · el informe HTML y el PDF (se inserta en línea: cero peticiones externas)
+ *   · el frontend Vue, que lo mapea a @theme de Tailwind v4
+ *   · las capturas y diagramas que genere el propio informe
+ *
+ * Decisión que conviene conocer: la interfaz es oscura por compromiso, pero el
+ * informe se imprime. Un PDF oscuro gasta tóner y se lee mal en papel, así que
+ * el sistema define DOS superficies con la misma identidad: los mismos tonos de
+ * severidad (reajustados para contrastar sobre blanco), la misma escala
+ * tipográfica y el mismo ritmo. Cambia el soporte, no el producto.
+ */
+
+:root {
+  /* ── Superficies estratificadas (pantalla) ───────────────────────────── */
+  --cx-bg:            #0A0D13;
+  --cx-surface:       #111621;
+  --cx-surface-2:     #171E2C;
+  --cx-surface-3:     #1E2738;
+  --cx-border:        #212B3C;
+  --cx-border-strong: #303D55;
+
+  /* ── Texto ───────────────────────────────────────────────────────────── */
+  --cx-fg:            #E3E9F3;
+  --cx-fg-dim:        #8B97AD;
+  --cx-fg-faint:      #5A657C;
+
+  /* ── Acento: solo para lo interactivo y lo afirmativo. Nunca severidad. ─ */
+  --cx-accent:        #3FD5BE;
+  --cx-accent-dim:    #1E6D63;
+  --cx-accent-ink:    #06211E;
+
+  /* ── Severidad: el único color saturado del sistema ──────────────────── */
+  --cx-crit:          #FF4D5E;
+  --cx-high:          #FF8A3D;
+  --cx-med:           #F2C14B;
+  --cx-low:           #5E8FD4;
+  /* Gris neutro a propósito: info es el nivel menos grave y debe recular.
+     El tono anterior (#6C778E) tiraba a azul y quedaba a ΔE 11,1 de --cx-low,
+     por debajo del umbral de 15 para visión normal: en una barra apilada los
+     dos segmentos se confundían. Medido, no estimado. */
+  --cx-info:          #6E6E74;
+  /* Tinta sobre un bloque de severidad: la severidad es el fondo. */
+  --cx-sev-ink:       #0A0D13;
+  --cx-mark:          rgba(255, 77, 94, .17);
+  --cx-mark-fg:       #FFB3BA;
+
+  /* ── Tipografía: locales, nunca remotas ──────────────────────────────── */
+  --cx-sans: "Lato", "Liberation Sans", system-ui, sans-serif;
+  --cx-mono: "Noto Sans Mono", "DejaVu Sans Mono", monospace;
+
+  /* Escala tipográfica. Los datos técnicos van en mono; la interfaz en sans. */
+  --cx-text-micro: 10px;    /* rótulos en versales con tracking amplio       */
+  --cx-text-xs:    11.5px;  /* metadatos y evidencia                         */
+  --cx-text-sm:    12.5px;
+  --cx-text-base:  13.5px;  /* cuerpo de la interfaz                         */
+  --cx-text-md:    15px;
+  --cx-text-lg:    17.5px;  /* título de hallazgo                            */
+  --cx-text-xl:    21px;    /* cifras                                        */
+  --cx-text-2xl:   26px;
+  --cx-tracking-label: .14em;
+
+  /* ── Ritmo y forma ───────────────────────────────────────────────────── */
+  --cx-radius:  5px;
+  --cx-rule:    1px;        /* filetes de 1px; el sistema no usa sombras     */
+  --cx-space-1: 4px;
+  --cx-space-2: 8px;
+  --cx-space-3: 13px;
+  --cx-space-4: 18px;
+  --cx-space-5: 26px;
+  --cx-space-6: 40px;
+
+  color-scheme: dark;
+}
+
+/* ── Superficie de impresión ───────────────────────────────────────────────
+ * Misma identidad, soporte distinto. Las severidades se oscurecen para
+ * mantener el contraste sobre papel blanco; el acento pierde luminosidad por
+ * la misma razón. WeasyPrint aplica esta rama al generar el PDF.
+ */
+@media print {
+  :root {
+    --cx-bg:            #FFFFFF;
+    --cx-surface:       #FFFFFF;
+    --cx-surface-2:     #F4F6F8;
+    --cx-surface-3:     #EDF0F4;
+    --cx-border:        #D6DCE4;
+    --cx-border-strong: #AEB8C6;
+
+    --cx-fg:            #11151B;
+    --cx-fg-dim:        #4F5968;
+    --cx-fg-faint:      #7B8593;
+
+    --cx-accent:        #0C6A61;
+    --cx-accent-dim:    #9FD5CE;
+    --cx-accent-ink:    #FFFFFF;
+
+    --cx-crit:          #C2122A;
+    --cx-high:          #A8530A;
+    --cx-med:           #7D6200;
+    --cx-low:           #1F5A96;
+    --cx-info:          #5B6474;
+    --cx-sev-ink:       #FFFFFF;
+    --cx-mark:          rgba(194, 18, 42, .14);
+    --cx-mark-fg:       #8E0D1F;
+
+    color-scheme: light;
+  }
+}
+
+/* La misma paleta de impresión, aplicable a pantalla para previsualizar el
+ * informe tal y como saldrá en papel. */
+.cx-print {
+  --cx-bg: #FFFFFF; --cx-surface: #FFFFFF; --cx-surface-2: #F4F6F8;
+  --cx-surface-3: #EDF0F4; --cx-border: #D6DCE4; --cx-border-strong: #AEB8C6;
+  --cx-fg: #11151B; --cx-fg-dim: #4F5968; --cx-fg-faint: #7B8593;
+  --cx-accent: #0C6A61; --cx-accent-dim: #9FD5CE; --cx-accent-ink: #FFFFFF;
+  --cx-crit: #C2122A; --cx-high: #A8530A; --cx-med: #7D6200;
+  --cx-low: #1F5A96; --cx-info: #5B6474; --cx-sev-ink: #FFFFFF;
+  --cx-mark: rgba(194, 18, 42, .14); --cx-mark-fg: #8E0D1F;
+  color-scheme: light;
+}
+
+/* ── Mapa de severidad ─────────────────────────────────────────────────────
+ * Una sola clase por nivel, para que informe e interfaz coincidan sin
+ * duplicar la tabla de colores en cada plantilla.
+ */
+.sev-critical { --cx-sev: var(--cx-crit) }
+.sev-high     { --cx-sev: var(--cx-high) }
+.sev-medium   { --cx-sev: var(--cx-med) }
+.sev-low      { --cx-sev: var(--cx-low) }
+.sev-info     { --cx-sev: var(--cx-info) }

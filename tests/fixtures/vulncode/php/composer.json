@@ -1,0 +1,8 @@
+{
+  "name": "corp/portal",
+  "require": {
+    "monolog/monolog": "1.24.0",
+    "guzzlehttp/guzzle": "6.3.0",
+    "symfony/http-kernel": "4.4.0"
+  }
+}

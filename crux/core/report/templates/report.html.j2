@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Crux · {{ project }} · {{ scan_id }}</title>
+{# El sistema de diseño va EN LÍNEA: un informe que pidiese una hoja de estilos
+   remota contradiría todo lo que esta herramienta promete. #}
+<style>{{ tokens }}</style>
+<style>
+*{box-sizing:border-box}
+body{
+  margin:0;background:var(--cx-bg);color:var(--cx-fg);
+  font:400 var(--cx-text-base)/1.6 var(--cx-sans);
+  -webkit-font-smoothing:antialiased
+}
+.sheet{max-width:1020px;margin:0 auto;padding:var(--cx-space-6) max(20px,4vw)}
+.lbl{
+  font:700 var(--cx-text-micro) var(--cx-sans);letter-spacing:var(--cx-tracking-label);
+  text-transform:uppercase;color:var(--cx-fg-faint)
+}
+header.head{
+  display:flex;flex-wrap:wrap;gap:var(--cx-space-3) var(--cx-space-5);
+  align-items:baseline;padding-bottom:var(--cx-space-4);
+  border-bottom:var(--cx-rule) solid var(--cx-border-strong)
+}
+.brand{font:900 var(--cx-text-md) var(--cx-sans);letter-spacing:.16em;text-transform:uppercase}
+.brand i{
+  display:inline-block;width:7px;height:7px;border-radius:50%;
+  background:var(--cx-accent);margin-right:8px
+}
+.ctx{font:400 var(--cx-text-sm) var(--cx-mono);color:var(--cx-fg-dim)}
+.ctx b{color:var(--cx-fg);font-weight:400}
+.egress{
+  margin-left:auto;font:700 var(--cx-text-micro) var(--cx-sans);
+  letter-spacing:var(--cx-tracking-label);text-transform:uppercase;color:var(--cx-accent);
+  border:var(--cx-rule) solid var(--cx-accent-dim);padding:4px 10px;border-radius:999px
+}
+h1{margin:var(--cx-space-5) 0 var(--cx-space-3);font:400 var(--cx-text-2xl)/1.25 var(--cx-sans);text-wrap:balance}
+.lede{margin:0 0 var(--cx-space-5);color:var(--cx-fg-dim);max-width:68ch;font-size:var(--cx-text-md)}
+.lede b{color:var(--cx-crit);font-weight:700}
+
+.band{display:flex;flex-direction:column;gap:var(--cx-space-2);margin-bottom:var(--cx-space-3)}
+.track{display:flex;height:10px;border-radius:2px;overflow:hidden;background:var(--cx-surface-3)}
+.legend{display:flex;gap:var(--cx-space-4);flex-wrap:wrap;font:400 var(--cx-text-xs) var(--cx-mono);color:var(--cx-fg-dim)}
+.legend b{color:var(--cx-fg);font-weight:400;font-variant-numeric:tabular-nums}
+.dot{display:inline-block;width:7px;height:7px;border-radius:2px;margin-right:5px}
+.stats{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));
+  gap:var(--cx-rule);background:var(--cx-border);
+  border:var(--cx-rule) solid var(--cx-border);margin-bottom:var(--cx-space-6)
+}
+.stats div{background:var(--cx-surface);padding:var(--cx-space-3) var(--cx-space-3);min-width:0}
+.stats dd{margin:5px 0 0;font:400 var(--cx-text-xl)/1 var(--cx-mono);font-variant-numeric:tabular-nums}
+.stats dd small{font:400 var(--cx-text-sm) var(--cx-sans);color:var(--cx-fg-dim)}
+
+h2.sec{
+  margin:var(--cx-space-6) 0 var(--cx-space-3);font:600 var(--cx-text-micro) var(--cx-sans);
+  letter-spacing:var(--cx-tracking-label);text-transform:uppercase;color:var(--cx-fg-faint);
+  border-bottom:var(--cx-rule) solid var(--cx-border);padding-bottom:var(--cx-space-2)
+}
+article.f{
+  border:var(--cx-rule) solid var(--cx-border);border-left:3px solid var(--cx-sev,var(--cx-info));
+  background:var(--cx-surface);margin-bottom:var(--cx-space-3);break-inside:avoid
+}
+article.f > .top{padding:var(--cx-space-3) var(--cx-space-4)}
+.tags{display:flex;gap:var(--cx-space-2);flex-wrap:wrap;align-items:center;margin-bottom:var(--cx-space-2)}
+.badge{
+  font:700 var(--cx-text-micro) var(--cx-sans);letter-spacing:.11em;text-transform:uppercase;
+  padding:3px 8px;border-radius:3px;background:var(--cx-sev);color:var(--cx-sev-ink)
+}
+.chip{
+  font:400 var(--cx-text-xs) var(--cx-mono);color:var(--cx-fg-dim);
+  border:var(--cx-rule) solid var(--cx-border-strong);border-radius:3px;padding:2px 7px
+}
+.chip.nuevo{color:var(--cx-accent);border-color:var(--cx-accent-dim)}
+article.f h3{margin:0 0 var(--cx-space-2);font:400 var(--cx-text-lg)/1.3 var(--cx-sans);text-wrap:balance}
+.url{
+  display:block;font:400 var(--cx-text-xs)/1.5 var(--cx-mono);color:var(--cx-accent);
+  overflow-wrap:anywhere;margin-bottom:var(--cx-space-3)
+}
+article.f p{margin:0 0 var(--cx-space-3);line-height:1.65;max-width:72ch;color:#CBD4E2}
+.fix{border-left:2px solid var(--cx-accent-dim);padding-left:var(--cx-space-3)}
+details{border-top:var(--cx-rule) solid var(--cx-border)}
+details summary{
+  padding:var(--cx-space-2) var(--cx-space-4);cursor:pointer;
+  font:700 var(--cx-text-micro) var(--cx-sans);letter-spacing:var(--cx-tracking-label);
+  text-transform:uppercase;color:var(--cx-fg-faint)
+}
+details summary:hover{color:var(--cx-fg-dim)}
+pre{
+  margin:0;padding:var(--cx-space-3) var(--cx-space-4);background:var(--cx-surface-3);
+  overflow-x:auto;font:400 var(--cx-text-xs)/1.7 var(--cx-mono);color:#B9C4D4;white-space:pre-wrap;
+  word-break:break-word;border-top:var(--cx-rule) solid var(--cx-border)
+}
+pre .hk{color:var(--cx-accent)}
+footer{
+  margin-top:var(--cx-space-6);padding-top:var(--cx-space-4);
+  border-top:var(--cx-rule) solid var(--cx-border);
+  font:400 var(--cx-text-xs)/1.8 var(--cx-mono);color:var(--cx-fg-faint)
+}
+footer b{color:var(--cx-fg-dim);font-weight:400}
+
+/* En papel: superficie clara, nada de interacción, y cada hallazgo entero. */
+@media print{
+  .sheet{max-width:none;padding:0}
+  details{border-top:var(--cx-rule) solid var(--cx-border)}
+  details summary{display:none}
+  details[open] pre, details pre{display:block}
+  article.f{page-break-inside:avoid}
+  a{color:inherit;text-decoration:none}
+}
+@page{size:A4;margin:16mm 14mm 18mm}
+</style>
+</head>
+<body>
+<div class="sheet">
+  <header class="head">
+    <span class="brand"><i></i>Crux</span>
+    <span class="ctx"><b>{{ project }}</b> · {{ scan_id }} · perfil {{ profile }} · {{ started }}</span>
+    <span class="egress">{{ egress }}</span>
+  </header>
+
+  <h1>{{ headline }}</h1>
+  <p class="lede">{{ lede|safe }}</p>
+
+  <div class="band">
+    <div class="track">
+      {%- for level, count in severity_counts.items() if count %}
+      <span style="flex:{{ count }};background:var(--cx-{{ level_token[level] }})"></span>
+      {%- endfor %}
+    </div>
+    <div class="legend">
+      {%- for level, count in severity_counts.items() %}
+      <span><i class="dot" style="background:var(--cx-{{ level_token[level] }})"></i>{{ level_label[level] }} <b>{{ count }}</b></span>
+      {%- endfor %}
+    </div>
+  </div>
+
+  <dl class="stats">
+    {% if kind == "code" %}
+    <div><dt class="lbl">Herramientas</dt><dd>{{ tools.split(', ')|length }}</dd></div>
+    {% else %}
+    <div><dt class="lbl">Objetivos</dt><dd>{{ targets_count }}</dd></div>
+    <div><dt class="lbl">URLs vivas</dt><dd>{{ alive }}<small>/{{ probed }}</small></dd></div>
+    {% endif %}
+    <div><dt class="lbl">Hallazgos</dt><dd>{{ findings|length }}</dd></div>
+    <div><dt class="lbl">Nuevos</dt><dd>{{ new }}</dd></div>
+    <div><dt class="lbl">Corregidos</dt><dd>{{ fixed }}</dd></div>
+    <div><dt class="lbl">Duración</dt><dd>{{ duration }}</dd></div>
+  </dl>
+
+  {% for level in order %}
+    {% set group = findings|selectattr("severity_label", "equalto", level)|list %}
+    {% if group %}
+    <h2 class="sec">{{ level_label[level] }} · {{ group|length }}</h2>
+      {% for f in group %}
+      <article class="f sev-{{ level }}">
+        <div class="top">
+          <div class="tags">
+            <span class="badge">{{ level_label[level] }}</span>
+            <span class="chip">{{ f.source }}:{{ f.check_id }}</span>
+            {% for c in f.cwe %}<span class="chip">{{ c }}</span>{% endfor %}
+            {% if f.cvss_score %}<span class="chip">CVSS {{ "%.1f"|format(f.cvss_score) }}</span>{% endif %}
+            {% if f.is_new %}<span class="chip nuevo">nuevo</span>{% endif %}
+          </div>
+          <h3>{{ f.title }}</h3>
+          <code class="url">{{ f.target }}{% if f.param %} · parámetro {{ f.param }}{% endif %}</code>
+          {% if f.description %}<p>{{ f.description }}</p>{% endif %}
+          {% if f.remediation %}<p class="fix">{{ f.remediation }}</p>{% endif %}
+        </div>
+        {% for e in f.evidence %}
+          {% if e.request or e.response or e.snippet %}
+          <details{% if loop.first and level in ("critical","high") %} open{% endif %}>
+            <summary>Evidencia {{ loop.index }}</summary>
+            {% if e.request %}<pre>{{ e.request|http }}</pre>{% endif %}
+            {% if e.response %}<pre>{{ e.response|http }}</pre>{% endif %}
+            {% if e.snippet %}<pre>{{ e.snippet }}</pre>{% endif %}
+          </details>
+          {% endif %}
+        {% endfor %}
+      </article>
+      {% endfor %}
+    {% endif %}
+  {% endfor %}
+
+  <footer>
+    Generado por Crux {{ version }} el {{ generated }}.<br>
+    {% if kind == "code" %}Ruta analizada: <b>{{ scope_text }}</b>. Sin usar la red.{% else %}Alcance: <b>{{ scope_text }}</b>. {{ egress }} durante todo el escaneo.{% endif %}<br>
+    Herramientas: <b>{{ tools }}</b>.
+  </footer>
+</div>
+</body>
+</html>

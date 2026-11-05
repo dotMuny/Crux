@@ -1,0 +1,27 @@
+# Configuración de pnpm. OJO: desde pnpm 12 estos ajustes viven AQUÍ, no en
+# .npmrc —que solo se lee para auth, registro, TLS y proxy— ni en el campo
+# "pnpm" de package.json, que ya no se lee. Ponerlos en el sitio equivocado no
+# da error: se ignoran en silencio, y uno se queda creyendo que tiene controles
+# que no están activos.
+#
+# Referencia: https://pnpm.io/settings
+
+# Una versión recién publicada no se instala hasta pasados 7 días (el valor por
+# defecto de pnpm son 1440 minutos, un día). Las campañas de paquetes
+# maliciosos —Shai-Hulud, Nx, Axios— se detectan y retiran en horas: esta
+# espera es la diferencia entre instalarlas y no llegar a verlas.
+minimumReleaseAge: 10080
+
+# Un script de build sin revisar es un error de instalación, no un aviso que
+# nadie lee. Es el valor por defecto; se deja explícito porque es deliberado.
+strictDepBuilds: true
+
+# Scripts de build de dependencias: cada entrada es una decisión tomada a mano.
+allowBuilds:
+  # vue-demi lo arrastra @tanstack/vue-query. Su postinstall detecta la versión
+  # de Vue instalada y copia la build correspondiente a lib/. Revisado:
+  # scripts/postinstall.js solo llama a switchVersion(). Sin ejecutarlo, el
+  # paquete ya viene apuntando a la rama de Vue 3 —comprobado: isVue3 === true
+  # y `ref` es una función—, y este proyecto solo usa Vue 3.5. Se omite: dar
+  # permiso de ejecución no aportaría nada y ampliaría la superficie.
+  vue-demi: false

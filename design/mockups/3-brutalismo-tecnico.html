@@ -1,0 +1,381 @@
+<!doctype html>
+<html lang="es" data-mockup="brutalismo-tecnico">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Crux · Brutalismo técnico</title>
+<style>
+/* ── Dirección 3: brutalismo técnico ─────────────────────────────────────────
+   Tercer modelo de interacción, no solo tercera piel: no hay panel lateral. Una
+   matriz host × severidad manda arriba, y la evidencia se despliega EN LÍNEA
+   bajo cada fila, con petición y respuesta enfrentadas. Pensado para comparar
+   hallazgos entre hosts de un vistazo, no para leer uno a fondo.
+   Rejilla visible, radio cero, filetes de 2px, condensada en versales.
+   Compromiso deliberado con un solo tema oscuro. Tipografías locales.         */
+:root{
+  --ink:#07080A; --panel:#101216; --panel-2:#171A20; --sunk:#0B0D10;
+  --rule:#2B313B; --rule-hi:#49525F;
+  --fg:#F2F4F7; --fg-dim:#8B93A1; --fg-faint:#5A626F;
+  --hot:#FF3B00; --cool:#00E5A0;
+  --crit:#FF2D3F; --high:#FF7A1A; --med:#FFC400; --low:#3D8BFF; --info:#6E7786;
+  --cond:"Liberation Sans Narrow","DejaVu Sans Condensed","Lato",system-ui,sans-serif;
+  --sans:"Lato","Liberation Sans",system-ui,sans-serif;
+  --mono:"DejaVu Sans Mono","Noto Sans Mono",monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;background:var(--ink);color:var(--fg);
+  font:400 14px/1.45 var(--sans);-webkit-font-smoothing:antialiased
+}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--hot);outline-offset:2px}
+::selection{background:var(--hot);color:#fff}
+.lbl{
+  font:700 10px var(--cond);letter-spacing:.18em;text-transform:uppercase;
+  color:var(--fg-faint)
+}
+
+/* ── Barra superior: dura, sin aire ──────────────────────────────────────── */
+.bar{
+  display:flex;align-items:stretch;flex-wrap:wrap;
+  border-bottom:2px solid var(--fg);background:var(--panel)
+}
+.bar .cell{
+  display:flex;align-items:center;gap:10px;
+  padding:11px max(14px,env(safe-area-inset-left,0px));
+  border-right:2px solid var(--rule)
+}
+.bar .cell:last-child{border-right:0;padding-right:max(14px,env(safe-area-inset-right,0px))}
+.bar .grow{flex:1;min-width:0}
+.mark{
+  font:700 17px/1 var(--cond);letter-spacing:.2em;text-transform:uppercase
+}
+.mark b{color:var(--hot)}
+.bar .ctx{font:400 12px var(--mono);color:var(--fg-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bar .ctx em{color:var(--fg);font-style:normal}
+.net{
+  display:flex;align-items:center;gap:8px;font:700 10.5px var(--cond);
+  letter-spacing:.14em;text-transform:uppercase;color:var(--cool)
+}
+.net i{width:9px;height:9px;background:var(--cool);flex:none}
+
+/* ── Matriz host × severidad ─────────────────────────────────────────────── */
+.matrix{border-bottom:2px solid var(--fg);background:var(--sunk);overflow-x:auto}
+.matrix table{border-collapse:collapse;width:100%;min-width:620px}
+.matrix th,.matrix td{border:1px solid var(--rule);padding:0}
+.matrix thead th{
+  background:var(--panel);text-align:left;padding:8px 12px;
+  font:700 10px var(--cond);letter-spacing:.16em;text-transform:uppercase;color:var(--fg-faint)
+}
+.matrix thead th:first-child{width:38%}
+.matrix thead th:not(:first-child){text-align:center;width:11%}
+.matrix tbody th{
+  background:var(--panel);text-align:left;padding:9px 12px;max-width:300px;
+  font:400 12.5px var(--mono);color:var(--fg);white-space:nowrap
+}
+.matrix tbody th small{display:block;color:var(--fg-faint);font-size:10.5px;margin-top:2px}
+.cellbtn{
+  width:100%;height:100%;min-height:44px;display:flex;align-items:center;justify-content:center;
+  font:400 17px var(--mono);font-variant-numeric:tabular-nums;color:var(--ink)
+}
+.cellbtn[data-n="0"]{color:var(--fg-faint);background:var(--sunk)}
+.cellbtn:hover{outline:2px solid var(--fg);outline-offset:-2px}
+.cellbtn[aria-pressed="true"]{outline:3px solid var(--hot);outline-offset:-3px}
+.tot{font:400 17px var(--mono);color:var(--fg);background:var(--panel-2);
+  display:flex;align-items:center;justify-content:center;min-height:44px;
+  font-variant-numeric:tabular-nums}
+
+/* ── Barra de herramientas ───────────────────────────────────────────────── */
+.tools{
+  display:flex;align-items:stretch;flex-wrap:wrap;
+  border-bottom:2px solid var(--fg);background:var(--panel)
+}
+.tools .seg{display:flex;align-items:center;border-right:2px solid var(--rule)}
+.tools .seg:last-child{border-right:0;flex:1;min-width:180px}
+.chip{
+  padding:10px 13px;border-right:1px solid var(--rule);
+  font:700 10px var(--cond);letter-spacing:.14em;text-transform:uppercase;color:var(--fg-faint)
+}
+.chip:last-child{border-right:0}
+.chip:hover{background:var(--panel-2);color:var(--fg)}
+.chip[aria-pressed="true"]{background:var(--fg);color:var(--ink)}
+.chip b{font-family:var(--mono);font-weight:400;font-size:11px;letter-spacing:0;margin-left:5px}
+.find{display:flex;align-items:center;gap:9px;padding:0 13px;width:100%}
+.find input{
+  flex:1;min-width:0;background:none;border:0;outline:none;color:var(--fg);
+  font:400 13px var(--mono);padding:11px 0
+}
+.find input::placeholder{color:var(--fg-faint)}
+.find .n{font:400 11.5px var(--mono);color:var(--fg-faint);white-space:nowrap;font-variant-numeric:tabular-nums}
+
+/* ── Tabla de hallazgos, a sangre ────────────────────────────────────────── */
+.feed{flex:1;min-height:0;overflow-y:auto}
+.rowhead{
+  display:grid;
+  grid-template-columns:14px 78px minmax(0,1fr) 152px 104px 30px;
+  align-items:center;gap:12px;width:100%;text-align:left;
+  padding:0 max(14px,env(safe-area-inset-right,0px)) 0 0;
+  border-bottom:1px solid var(--rule);background:var(--ink)
+}
+.rowhead:hover{background:var(--panel)}
+.rowhead[aria-expanded="true"]{background:var(--panel-2);border-bottom-color:var(--fg)}
+.rowhead .bandera{align-self:stretch;min-height:46px}
+.rowhead .sev{
+  font:700 10px var(--cond);letter-spacing:.14em;text-transform:uppercase;padding-left:2px
+}
+.rowhead .ttl{min-width:0}
+.rowhead .ttl span{
+  display:block;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap
+}
+.rowhead .ttl code{
+  display:block;font:400 11px var(--mono);color:var(--fg-faint);margin-top:2px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap
+}
+.rowhead .host{font:400 12px var(--mono);color:var(--fg-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rowhead .st{font:700 9.5px var(--cond);letter-spacing:.12em;text-transform:uppercase}
+.rowhead[data-state="new"] .st{color:var(--fg-faint)}
+.rowhead[data-state="confirmed"] .st{color:var(--ink);background:var(--crit);padding:3px 6px}
+.rowhead[data-state="false_positive"] .st{color:var(--fg-faint);text-decoration:line-through}
+.rowhead[data-state="accepted_risk"] .st{color:var(--med)}
+.rowhead[data-state="false_positive"] .ttl span{color:var(--fg-faint)}
+.caret{
+  font:400 15px var(--mono);color:var(--fg-faint);text-align:center;
+  transition:transform .12s linear
+}
+.rowhead[aria-expanded="true"] .caret{transform:rotate(90deg);color:var(--hot)}
+@media (prefers-reduced-motion:reduce){.caret{transition:none}}
+
+/* ── Panel desplegado en línea ───────────────────────────────────────────── */
+.panel{border-bottom:2px solid var(--fg);background:var(--sunk)}
+.panel[hidden]{display:none!important}
+.pmeta{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(104px,1fr));
+  border-bottom:1px solid var(--rule)
+}
+.pmeta div{padding:9px 13px;border-right:1px solid var(--rule);min-width:0}
+.pmeta div:first-child{grid-column:span 2}
+.pmeta div:last-child{border-right:0}
+.pmeta dt{margin:0 0 4px}
+.pmeta dd{margin:0;font:400 12.5px var(--mono);font-variant-numeric:tabular-nums}
+.prose{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(272px,1fr));
+  border-bottom:1px solid var(--rule)
+}
+.prose > div{padding:14px 15px;border-right:1px solid var(--rule);min-width:0}
+.prose > div:last-child{border-right:0}
+.prose p{margin:7px 0 0;font-size:13.5px;line-height:1.6;color:#D4DAE3}
+.prose .fix p{color:var(--cool)}
+/* Petición y respuesta enfrentadas: es el modo de lectura de esta dirección. */
+.pair{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}
+.pair > figure{margin:0;border-right:1px solid var(--rule);min-width:0}
+.pair > figure:last-child{border-right:0}
+.pair figcaption{
+  display:flex;justify-content:space-between;gap:10px;align-items:center;
+  padding:8px 13px;border-bottom:1px solid var(--rule);background:var(--panel)
+}
+.pair figcaption .b{font:400 10.5px var(--mono);color:var(--fg-faint);letter-spacing:0;text-transform:none}
+.pair pre{
+  margin:0;padding:13px;overflow-x:auto;background:var(--sunk);
+  font:400 11.5px/1.75 var(--mono);color:#BAC2CE;white-space:pre
+}
+.pair pre .hk{color:var(--hot)}
+.pair pre mark{background:var(--hot);color:#fff;padding:0 2px;font-weight:700}
+.pair pre .add{color:var(--cool)}
+.ptriage{display:flex;flex-wrap:wrap;border-top:1px solid var(--rule)}
+.ptriage button{
+  padding:11px 16px;border-right:1px solid var(--rule);
+  font:700 10px var(--cond);letter-spacing:.14em;text-transform:uppercase;color:var(--fg-dim)
+}
+.ptriage button:hover{background:var(--panel-2);color:var(--fg)}
+.ptriage .go{background:var(--hot);color:#fff}
+.ptriage .go:hover{background:#FF5C2B;color:#fff}
+
+/* ── Pie de tareas ───────────────────────────────────────────────────────── */
+.foot{
+  display:flex;flex-wrap:wrap;align-items:stretch;
+  border-top:2px solid var(--fg);background:var(--panel)
+}
+.foot .t{
+  display:flex;align-items:center;gap:8px;padding:9px 13px;
+  border-right:1px solid var(--rule);font:400 11.5px var(--mono);color:var(--fg-dim)
+}
+.foot .t i{width:7px;height:7px;background:var(--fg-faint);flex:none}
+.foot .t.done i{background:var(--rule-hi)}
+.foot .t.running i{background:var(--hot);animation:blink 1s steps(2,start) infinite}
+@keyframes blink{50%{opacity:.25}}
+@media (prefers-reduced-motion:reduce){.foot .t.running i{animation:none}}
+.foot .t b{color:var(--fg);font-weight:400}
+
+.shell{display:flex;flex-direction:column;height:100%}
+
+@media (max-width:860px){
+  .rowhead{grid-template-columns:14px 70px minmax(0,1fr) 92px 26px;gap:10px}
+  .rowhead .host{display:none}
+}
+@media (max-width:560px){
+  .rowhead{grid-template-columns:14px minmax(0,1fr) 26px;gap:10px}
+  .rowhead .sev{display:none}
+  .bar .cell{border-right:0;border-bottom:1px solid var(--rule);width:100%}
+}
+</style>
+</head>
+<body>
+<div class="shell">
+  <header class="bar">
+    <div class="cell"><span class="mark">AU<b>DEX</b></span></div>
+    <div class="cell grow"><span class="ctx" id="ctx"></span></div>
+    <div class="cell"><span class="net"><i></i><span id="net"></span></span></div>
+  </header>
+
+  <section class="matrix" aria-label="Hallazgos por host y severidad">
+    <table>
+      <thead><tr id="mhead"></tr></thead>
+      <tbody id="mbody"></tbody>
+    </table>
+  </section>
+
+  <div class="tools">
+    <div class="seg" id="chips"></div>
+    <div class="seg">
+      <label class="find">
+        <span class="lbl">buscar</span>
+        <input id="q" type="search" placeholder="título · host · cwe · check-id" aria-label="Buscar hallazgos">
+        <span class="n" id="n"></span>
+      </label>
+    </div>
+  </div>
+
+  <main class="feed" id="feed"></main>
+
+  <footer class="foot" id="foot"></footer>
+</div>
+
+<script src="data.js"></script>
+<script>
+const SEV=["critical","high","medium","low","info"];
+const SEV_ES={critical:"crít",high:"alta",medium:"media",low:"baja",info:"info"};
+const SEV_LARGO={critical:"crítica",high:"alta",medium:"media",low:"baja",info:"info"};
+const STATE_ES={new:"nuevo",confirmed:"confirmado",false_positive:"falso pos",accepted_risk:"aceptado"};
+const css=v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const color=s=>css({critical:"--crit",high:"--high",medium:"--med",low:"--low",info:"--info"}[s]);
+
+const scan=window.CRUX_SCAN, all=window.CRUX_FINDINGS;
+const hosts=[...new Set(all.map(f=>f.host))];
+let cell=null, chips=new Set(), query="", open=new Set([all[0].id]);
+
+document.getElementById("ctx").innerHTML=
+  `<em>${scan.project}</em> // ${scan.scanId} // perfil ${scan.profile} // ${scan.requests.toLocaleString("es")} peticiones // ${scan.duration}`;
+document.getElementById("net").textContent=scan.egress;
+
+/* Matriz host × severidad. Cada celda filtra. */
+document.getElementById("mhead").innerHTML=
+  `<th>host</th>`+SEV.map(s=>`<th>${SEV_ES[s]}</th>`).join("")+`<th>σ</th>`;
+document.getElementById("mbody").innerHTML=hosts.map(h=>{
+  const ip=all.find(f=>f.host===h).ip;
+  const cells=SEV.map(s=>{
+    const n=all.filter(f=>f.host===h&&f.sev===s).length;
+    return `<td><button class="cellbtn" data-n="${n}" data-h="${h}" data-s="${s}"
+      aria-pressed="false" style="${n?`background:${color(s)}`:""}"
+      aria-label="${n} de severidad ${SEV_LARGO[s]} en ${h}">${n||"·"}</button></td>`;
+  }).join("");
+  const tot=all.filter(f=>f.host===h).length;
+  return `<tr><th>${h}<small>${ip}</small></th>${cells}<td><span class="tot">${tot}</span></td></tr>`;
+}).join("");
+
+document.querySelectorAll(".cellbtn").forEach(b=>b.addEventListener("click",()=>{
+  const key=b.dataset.h+"|"+b.dataset.s;
+  const same=cell===key;
+  document.querySelectorAll(".cellbtn").forEach(x=>x.setAttribute("aria-pressed","false"));
+  cell=same?null:key;
+  if(!same) b.setAttribute("aria-pressed","true");
+  feed();
+}));
+
+document.getElementById("chips").innerHTML=
+  ["new","confirmed","false_positive","accepted_risk"].map(s=>
+    `<button class="chip" aria-pressed="false" data-s="${s}">${STATE_ES[s]}<b>${all.filter(f=>f.state===s).length}</b></button>`).join("");
+document.querySelectorAll(".chip").forEach(b=>b.addEventListener("click",()=>{
+  chips.has(b.dataset.s)?chips.delete(b.dataset.s):chips.add(b.dataset.s);
+  b.setAttribute("aria-pressed",chips.has(b.dataset.s));feed();
+}));
+
+document.getElementById("foot").innerHTML=scan.tasks.map(t=>
+  `<div class="t ${t.status}"><i></i>${t.name} <b>${t.found||0}</b></div>`).join("")
+  +`<div class="t"><i style="background:var(--cool)"></i>alcance <b>${scan.scope[0]}</b></div>`;
+
+function shown(){
+  return all.filter(f=>{
+    if(cell){const [h,s]=cell.split("|"); if(f.host!==h||f.sev!==s) return false;}
+    if(chips.size&&!chips.has(f.state)) return false;
+    if(query&&!`${f.title} ${f.host} ${f.cwe} ${f.check} ${f.target}`.toLowerCase().includes(query.toLowerCase())) return false;
+    return true;
+  });
+}
+function esc(s){return s.replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]))}
+function http(raw,hl){
+  let h=esc(raw);
+  if(hl) h=h.replace(esc(hl),m=>`<mark>${m}</mark>`);
+  return h.replace(/^([A-Za-z-]+):/gm,'<span class="hk">$1</span>:');
+}
+
+function feed(){
+  const items=shown();
+  document.getElementById("n").textContent=`${items.length}/${all.length}`;
+  document.getElementById("feed").innerHTML=items.map(f=>`
+    <button class="rowhead" data-id="${f.id}" data-state="${f.state}"
+            aria-expanded="${open.has(f.id)}" aria-controls="p${f.id}">
+      <span class="bandera" style="background:${color(f.sev)}"></span>
+      <span class="sev" style="color:${color(f.sev)}">${SEV_ES[f.sev]}</span>
+      <span class="ttl"><span>${f.title}</span><code>${f.source}:${f.check} · ${f.cwe}${f.param?" · param "+f.param:""}</code></span>
+      <span class="host">${f.host}</span>
+      <span class="st">${STATE_ES[f.state]}</span>
+      <span class="caret" aria-hidden="true">›</span>
+    </button>
+    <div class="panel" id="p${f.id}" ${open.has(f.id)?"":"hidden"}>
+      <dl class="pmeta">
+        <div><dt class="lbl">objetivo</dt><dd style="overflow-wrap:anywhere">${f.target.replace(/\//g,"/<wbr>")}</dd></div>
+        <div><dt class="lbl">dirección</dt><dd>${f.ip}</dd></div>
+        <div><dt class="lbl">cvss</dt><dd>${f.cvss?f.cvss.toFixed(1):"—"}</dd></div>
+        <div><dt class="lbl">certeza</dt><dd>${f.conf==="certain"?"alta":"media"}</dd></div>
+        <div><dt class="lbl">visto desde</dt><dd>${f.firstSeen}</dd></div>
+      </dl>
+      <div class="prose">
+        <div><span class="lbl">qué ocurre</span><p>${f.desc}</p></div>
+        <div class="fix"><span class="lbl">cómo se corrige</span><p>${f.fix}</p></div>
+      </div>
+      <div class="pair">
+        <figure>
+          <figcaption><span class="lbl">petición</span><span class="b">copiar curl</span></figcaption>
+          <pre>${http(f.req)}</pre>
+        </figure>
+        <figure>
+          <figcaption><span class="lbl">${f.diff?"diff entre roles":"respuesta"}</span><span class="b">${f.res.length} B</span></figcaption>
+          <pre>${f.diff
+            ? `<span class="add">— sesión propietaria (ana)</span>\n{"id":1001,"owner_id":1,"total":"1.240,00"}\n\n<span class="hk">— sesión ajena (luis)</span>\n<mark>{"id":1001,"owner_id":1,"total":"1.240,00"}</mark>\n\nidénticas: no hay control de acceso`
+            : http(f.res,f.highlight)}</pre>
+        </figure>
+      </div>
+      <div class="ptriage">
+        <button class="go">confirmar</button>
+        <button>falso positivo</button>
+        <button>riesgo aceptado</button>
+        <button>reenviar petición</button>
+        <button>abrir en el grafo</button>
+      </div>
+    </div>`).join("")
+    || `<p style="padding:26px 16px;color:var(--fg-faint);font:400 13px var(--mono)">sin hallazgos con estos filtros</p>`;
+
+  document.querySelectorAll(".rowhead").forEach(r=>r.addEventListener("click",()=>{
+    const id=+r.dataset.id;
+    open.has(id)?open.delete(id):open.add(id);
+    feed();
+  }));
+}
+
+document.getElementById("q").addEventListener("input",e=>{query=e.target.value;feed();});
+feed();
+</script>
+</body>
+</html>

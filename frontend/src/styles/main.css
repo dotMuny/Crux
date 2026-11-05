@@ -1,0 +1,59 @@
+/* El sistema de diseño vive en crux/core/report/tokens.css y se comparte con
+   el informe HTML y el PDF. Aquí solo se tiende el puente hacia Tailwind v4;
+   los valores no se duplican, se referencian. */
+@import "tailwindcss";
+@import "./tokens.css";
+
+@theme inline {
+  --color-bg: var(--cx-bg);
+  --color-surface: var(--cx-surface);
+  --color-surface-2: var(--cx-surface-2);
+  --color-surface-3: var(--cx-surface-3);
+  --color-line: var(--cx-border);
+  --color-line-strong: var(--cx-border-strong);
+
+  --color-fg: var(--cx-fg);
+  --color-fg-dim: var(--cx-fg-dim);
+  --color-fg-faint: var(--cx-fg-faint);
+
+  --color-accent: var(--cx-accent);
+  --color-accent-dim: var(--cx-accent-dim);
+  --color-accent-ink: var(--cx-accent-ink);
+
+  --color-crit: var(--cx-crit);
+  --color-high: var(--cx-high);
+  --color-med: var(--cx-med);
+  --color-low: var(--cx-low);
+  --color-info: var(--cx-info);
+  --color-sev-ink: var(--cx-sev-ink);
+
+  --font-sans: var(--cx-sans);
+  --font-mono: var(--cx-mono);
+
+  --radius-cx: var(--cx-radius);
+}
+
+/* La interfaz es oscura por compromiso: no hay alternador de tema. */
+html, body, #app { height: 100%; }
+body {
+  margin: 0;
+  background: var(--cx-bg);
+  color: var(--cx-fg);
+  font: 400 var(--cx-text-base) / 1.5 var(--cx-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Rótulo en versales: aparece lo bastante como para merecer su propia clase. */
+@utility lbl {
+  font-weight: 600;
+  font-size: var(--cx-text-micro);
+  letter-spacing: var(--cx-tracking-label);
+  text-transform: uppercase;
+  color: var(--cx-fg-faint);
+}
+
+:focus-visible { outline: 2px solid var(--cx-accent); outline-offset: 2px; }
+::selection { background: var(--cx-accent-dim); color: #fff; }
+
+/* Barras de desplazamiento acordes con las superficies, no el gris del sistema. */
+* { scrollbar-width: thin; scrollbar-color: var(--cx-border-strong) transparent; }

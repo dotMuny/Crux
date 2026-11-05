@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.pytest_cache/
+# Datos locales de escaneos y artefactos de ejecución: nunca al repo.
+/var/
+/out/
+# El frontend se compila en la máquina de build; dist/ sí se versiona (ver plan),
+# pero node_modules jamás.
+frontend/node_modules/
+# Paquetes de instalación generados por install/bundle.sh
+/dist/

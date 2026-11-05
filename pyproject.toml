@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "crux"
+version = "0.1.0"
+description = "Auditoría de aplicaciones web internas con egress cero. CLI y web UI locales."
+requires-python = ">=3.12"
+license = "Apache-2.0"
+
+# Todas estas dependencias ya están presentes en Kali 2026.3; el venv se crea con
+# --system-site-packages para reutilizarlas en lugar de descargarlas otra vez.
+dependencies = [
+    "click>=8.1",
+    "rich>=13",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.5",
+    "sqlalchemy>=2.0.30",
+    "alembic>=1.13",
+    "httpx>=0.27",
+    "jinja2>=3.1",
+    "weasyprint>=62",
+    "cvss>=3.1",
+    "beautifulsoup4>=4.12",
+    "lxml>=5",
+    "defusedxml>=0.7",
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+    # Selenium en lugar de Playwright: el paquete de Playwright en Kali no trae
+    # driver propio y exige /usr/bin/node en cada equipo del analista, que es
+    # justo la superficie npm que este proyecto evita. chromium-driver basta.
+    "selenium>=4.20",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "flask>=3"]
+
+[project.scripts]
+crux = "crux.cli.main:cli"
+
+[tool.setuptools.packages.find]
+include = ["crux*"]
+
+[tool.setuptools.package-data]
+crux = ["core/report/templates/*", "web/dist/**/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning"]

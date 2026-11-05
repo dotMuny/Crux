@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Crux · Tres direcciones</title>
+<style>
+/* Índice para comparar las tres direcciones. Neutro a propósito: no debe
+   favorecer a ninguna de las tres con su propio estilo. */
+:root{
+  --bg:#0E1014; --card:#171A20; --card-2:#1E232B; --border:#2A303A;
+  --fg:#E9ECF1; --fg-dim:#949DAB; --fg-faint:#656E7C; --accent:#5EC8BC;
+  --sans:"Lato","Liberation Sans",system-ui,sans-serif;
+  --mono:"Noto Sans Mono","DejaVu Sans Mono",monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{
+  margin:0;background:var(--bg);color:var(--fg);font:400 15px/1.6 var(--sans);
+  padding-block:44px 64px;
+  padding-left:max(20px,env(safe-area-inset-left,0px));
+  padding-right:max(20px,env(safe-area-inset-right,0px));
+}
+.wrap{max-width:1120px;margin:0 auto}
+h1{margin:0 0 10px;font:700 27px/1.2 var(--sans);letter-spacing:-.015em}
+.sub{margin:0 0 8px;color:var(--fg-dim);max-width:72ch}
+.note{
+  margin:0 0 34px;font:400 12.5px/1.6 var(--mono);color:var(--accent);
+  border-left:2px solid var(--accent);padding-left:12px;max-width:70ch
+}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(286px,1fr));gap:18px}
+a.card{
+  display:flex;flex-direction:column;gap:0;text-decoration:none;color:inherit;
+  background:var(--card);border:1px solid var(--border);overflow:hidden
+}
+a.card:hover{border-color:var(--accent)}
+a.card:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.swatch{height:72px;display:flex}
+.swatch span{flex:1}
+.body{padding:16px 17px 19px;display:flex;flex-direction:column;gap:9px;flex:1}
+.n{font:400 11px var(--mono);color:var(--fg-faint);letter-spacing:.04em}
+h2{margin:0;font:700 17px/1.25 var(--sans)}
+p{margin:0;font-size:13.5px;line-height:1.58;color:var(--fg-dim)}
+dl{margin:6px 0 0;display:grid;grid-template-columns:auto 1fr;gap:4px 10px;font-size:12.5px}
+dt{font:700 9.5px var(--sans);letter-spacing:.11em;text-transform:uppercase;color:var(--fg-faint);padding-top:3px}
+dd{margin:0;color:var(--fg)}
+.go{
+  margin-top:auto;padding-top:13px;font:700 10.5px var(--sans);letter-spacing:.13em;
+  text-transform:uppercase;color:var(--accent)
+}
+footer{
+  margin-top:40px;padding-top:22px;border-top:1px solid var(--border);
+  font:400 12.5px/1.7 var(--mono);color:var(--fg-faint);max-width:78ch
+}
+footer b{color:var(--fg-dim);font-weight:400}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Tres direcciones para la interfaz de Crux</h1>
+  <p class="sub">
+    Cada una es una propuesta completa: no son la misma pantalla con tres pieles, sino
+    tres modelos distintos de cómo un analista tría cientos de hallazgos. Ábrelas y
+    úsalas — los filtros, la búsqueda y la evidencia funcionan de verdad.
+  </p>
+  <p class="note">
+    Ninguna pide nada a la red: tipografías del sistema, cero CDN, cero fuentes remotas.
+    La dirección que elijas se convierte en los tokens de Tailwind del frontend Vue y en
+    las plantillas del informe PDF, para que CLI, web e informe parezcan un solo producto.
+  </p>
+
+  <div class="grid">
+    <a class="card" href="1-consola-refinada.html">
+      <span class="swatch">
+        <span style="background:#0A0D13"></span><span style="background:#171E2C"></span>
+        <span style="background:#3FD5BE"></span><span style="background:#FF4D5E"></span>
+        <span style="background:#FF8A3D"></span><span style="background:#F2C14B"></span>
+      </span>
+      <span class="body">
+        <span class="n">dirección 01</span>
+        <h2>Consola refinada</h2>
+        <p>Panel de triaje de tres columnas: facetas, tabla densa y detalle lateral. El color
+           saturado existe solo para codificar severidad. Teclado primero (<code>j</code>/<code>k</code>, <code>⌘K</code>).</p>
+        <dl>
+          <dt>Modelo</dt><dd>Triaje en volumen</dd>
+          <dt>Tema</dt><dd>Oscuro comprometido</dd>
+          <dt>Tipos</dt><dd>Lato + Noto Sans Mono</dd>
+        </dl>
+        <span class="go">Abrir →</span>
+      </span>
+    </a>
+
+    <a class="card" href="2-editorial-tecnico.html">
+      <span class="swatch">
+        <span style="background:#FAFBFC"></span><span style="background:#F1F3F6"></span>
+        <span style="background:#0E6B66"></span><span style="background:#B4232F"></span>
+        <span style="background:#A2520C"></span><span style="background:#14181E"></span>
+      </span>
+      <span class="body">
+        <span class="n">dirección 02</span>
+        <h2>Editorial técnico</h2>
+        <p>El informe <em>es</em> la interfaz: índice a la izquierda y el hallazgo compuesto como
+           una página que se lee. Lo que ves es lo que sale en el PDF. Claro por defecto, oscuro de primera clase.</p>
+        <dl>
+          <dt>Modelo</dt><dd>Lectura y entrega</dd>
+          <dt>Tema</dt><dd>Claro + oscuro</dd>
+          <dt>Tipos</dt><dd>Liberation Serif + Lato</dd>
+        </dl>
+        <span class="go">Abrir →</span>
+      </span>
+    </a>
+
+    <a class="card" href="3-brutalismo-tecnico.html">
+      <span class="swatch">
+        <span style="background:#07080A"></span><span style="background:#F2F4F7"></span>
+        <span style="background:#FF3B00"></span><span style="background:#00E5A0"></span>
+        <span style="background:#FF2D3F"></span><span style="background:#FFC400"></span>
+      </span>
+      <span class="body">
+        <span class="n">dirección 03</span>
+        <h2>Brutalismo técnico</h2>
+        <p>Matriz host × severidad arriba y tabla a sangre: la evidencia se despliega en línea,
+           con petición y respuesta enfrentadas. Sin panel lateral. Rejilla visible, radio cero.</p>
+        <dl>
+          <dt>Modelo</dt><dd>Comparar entre hosts</dd>
+          <dt>Tema</dt><dd>Oscuro comprometido</dd>
+          <dt>Tipos</dt><dd>Liberation Narrow + DejaVu Mono</dd>
+        </dl>
+        <span class="go">Abrir →</span>
+      </span>
+    </a>
+  </div>
+
+  <footer>
+    Los datos son de una auditoría verosímil, no reales: un portal de facturación, el
+    intranet de RRHH, una wiki y un Jenkins en <b>10.20.4.0/24</b>. Los doce hallazgos y
+    sus evidencias HTTP son los mismos en las tres maquetas, para que compares la interfaz
+    y no el contenido. Puedes quedarte con una, o pedir una mezcla: por ejemplo el modelo
+    de triaje de la 01 con el lenguaje visual de la 02.
+  </footer>
+</div>
+</body>
+</html>
