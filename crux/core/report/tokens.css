@@ -1,68 +1,109 @@
-/* Sistema de diseño de Crux — dirección "consola refinada".
+/* Sistema de diseño de Crux — dirección «Retícula».
  *
  * Fuente única de verdad del lenguaje visual. Lo consumen tres sitios:
  *   · el informe HTML y el PDF (se inserta en línea: cero peticiones externas)
  *   · el frontend Vue, que lo mapea a @theme de Tailwind v4
  *   · las capturas y diagramas que genere el propio informe
  *
- * Decisión que conviene conocer: la interfaz es oscura por compromiso, pero el
- * informe se imprime. Un PDF oscuro gasta tóner y se lee mal en papel, así que
- * el sistema define DOS superficies con la misma identidad: los mismos tonos de
- * severidad (reajustados para contrastar sobre blanco), la misma escala
- * tipográfica y el mismo ritmo. Cambia el soporte, no el producto.
+ * De dónde sale: de una cabina de avión. No por estética, sino porque una
+ * cabina resuelve el mismo problema que esta herramienta —mucha información,
+ * poca atención disponible, y un error de lectura que sale caro—, y lo
+ * resuelve con tres reglas que aquí se siguen al pie de la letra:
+ *
+ *   1. Cabina oscura. Un aviso apagado significa que no hay nada que atender.
+ *      Lo que no pide acción no se enciende; por eso un cero es gris.
+ *   2. El color tiene significado fijo. Rojo es aviso, ámbar es precaución,
+ *      cian es informativo, verde es normal, magenta es lo que está activo o
+ *      se puede accionar. Ningún color se usa para decorar.
+ *   3. La forma repite lo que dice el color. Cada severidad tiene su figura
+ *      —rombo, triángulo, cuadrado, círculo, círculo hueco—, así que quien no
+ *      distingue el rojo del ámbar sigue leyendo la pantalla. La rampa
+ *      rojo-ámbar-amarillo es indistinguible bajo protanopía (ver
+ *      docs/decisiones.md §18); con la figura deja de importar.
+ *
+ * La interfaz es oscura por compromiso, pero el informe se imprime. Un PDF
+ * oscuro gasta tóner y se lee mal en papel, así que el sistema define DOS
+ * superficies con la misma identidad. Cambia el soporte, no el producto.
  */
 
 :root {
-  /* ── Superficies estratificadas (pantalla) ───────────────────────────── */
-  --cx-bg:            #0A0D13;
-  --cx-surface:       #111621;
-  --cx-surface-2:     #171E2C;
-  --cx-surface-3:     #1E2738;
-  --cx-border:        #212B3C;
-  --cx-border-strong: #303D55;
+  /* ── Superficies (pantalla): noche, estratificada ────────────────────── */
+  --cx-bg:            #060B14;
+  --cx-surface:       #0D1626;
+  --cx-surface-2:     #121E33;
+  --cx-surface-3:     #18273F;
+  --cx-border:        #22344F;
+  --cx-border-strong: #2F4670;
 
   /* ── Texto ───────────────────────────────────────────────────────────── */
-  --cx-fg:            #E3E9F3;
-  --cx-fg-dim:        #8B97AD;
-  --cx-fg-faint:      #5A657C;
+  --cx-fg:            #E8F1FF;
+  --cx-fg-body:       #C9D6EA;   /* párrafos largos: un punto menos de brillo */
+  --cx-fg-dim:        #9DB0CC;
+  /* El más tenue sigue pasando 4,5:1 sobre --cx-surface-3. Un rótulo que no
+     se lee no es discreto: es ruido. */
+  --cx-fg-faint:      #8A9DB8;
+  --cx-code:          #B8C6DD;   /* HTTP crudo y diffs */
 
-  /* ── Acento: solo para lo interactivo y lo afirmativo. Nunca severidad. ─ */
-  --cx-accent:        #3FD5BE;
-  --cx-accent-dim:    #1E6D63;
-  --cx-accent-ink:    #06211E;
+  /* ── Magenta: lo activo y lo accionable. Nunca severidad. ────────────── */
+  --cx-accent:        #FF4FD8;
+  --cx-accent-dim:    #8A2A75;
+  --cx-accent-ink:    #14041A;
 
-  /* ── Severidad: el único color saturado del sistema ──────────────────── */
-  --cx-crit:          #FF4D5E;
-  --cx-high:          #FF8A3D;
-  --cx-med:           #F2C14B;
-  --cx-low:           #5E8FD4;
-  /* Gris neutro a propósito: info es el nivel menos grave y debe recular.
-     El tono anterior (#6C778E) tiraba a azul y quedaba a ΔE 11,1 de --cx-low,
-     por debajo del umbral de 15 para visión normal: en una barra apilada los
-     dos segmentos se confundían. Medido, no estimado. */
-  --cx-info:          #6E6E74;
+  /* ── Verde: normal, corregido, añadido. Distinto de lo accionable. ───── */
+  --cx-ok:            #57E389;
+  --cx-ok-dim:        #1F6B3F;
+
+  /* ── Severidad: convención de avisos de cabina ───────────────────────── */
+  --cx-crit:          #FF4D4D;   /* aviso      · rombo        */
+  --cx-high:          #FFB13B;   /* precaución · triángulo    */
+  --cx-med:           #F5E663;   /*              cuadrado     */
+  --cx-low:           #5FD4FF;   /* informativo · círculo     */
+  --cx-info:          #9DB0CC;   /*               círculo hueco */
   /* Tinta sobre un bloque de severidad: la severidad es el fondo. */
-  --cx-sev-ink:       #0A0D13;
-  --cx-mark:          rgba(255, 77, 94, .17);
-  --cx-mark-fg:       #FFB3BA;
+  --cx-sev-ink:       #060B14;
+  /* Un aviso encendido: fondo teñido y texto aclarado del mismo tono. */
+  --cx-crit-tint:     rgba(255, 77, 77, .13);
+  --cx-crit-fg:       #FF9C9C;
+  --cx-high-tint:     rgba(255, 177, 59, .12);
+  --cx-high-fg:       #FFC978;
+  --cx-mark:          rgba(255, 77, 77, .17);
+  --cx-mark-fg:       #FFB3B3;
 
-  /* ── Tipografía: locales, nunca remotas ──────────────────────────────── */
-  --cx-sans: "Lato", "Liberation Sans", system-ui, sans-serif;
-  --cx-mono: "Noto Sans Mono", "DejaVu Sans Mono", monospace;
+  /* ── Tipografía ──────────────────────────────────────────────────────────
+   * B612 la encargó Airbus para pantallas de cabina: está dibujada para que
+   * un 8 no se confunda con un 0 ni un 1 con una l de un vistazo, que es
+   * justo lo que hace falta al leer un puerto o un hash. Va empaquetada con
+   * la interfaz; aquí no se pide ninguna fuente a la red.
+   */
+  --cx-sans: "B612", "Verdana", "DejaVu Sans", system-ui, sans-serif;
+  /* Los datos en línea —una URL, un puerto, un check-id— van en la B612
+     normal, no en la monoespaciada. La B612 Mono pega el punto y los dos
+     puntos al borde izquierdo de su celda, que en un altímetro junta los
+     dígitos y aquí separa una dirección: «127. 0. 0. 1: 8999». Las cifras de
+     la B612 normal ya miden todas lo mismo, así que las columnas de números
+     siguen alineadas sin necesidad de la mono. */
+  --cx-mono: "B612", "Verdana", "DejaVu Sans", system-ui, sans-serif;
+  /* Los bloques crudos —HTTP, diffs, código— sí necesitan celdas iguales y
+     puntuación convencional. DejaVu Sans Mono viene con la distribución; la
+     B612 Mono empaquetada queda de reserva para que nunca falte una mono. */
+  --cx-pre: "DejaVu Sans Mono", "B612 Mono", ui-monospace, monospace;
 
-  /* Escala tipográfica. Los datos técnicos van en mono; la interfaz en sans. */
-  --cx-text-micro: 10px;    /* rótulos en versales con tracking amplio       */
-  --cx-text-xs:    11.5px;  /* metadatos y evidencia                         */
-  --cx-text-sm:    12.5px;
-  --cx-text-base:  13.5px;  /* cuerpo de la interfaz                         */
-  --cx-text-md:    15px;
-  --cx-text-lg:    17.5px;  /* título de hallazgo                            */
-  --cx-text-xl:    21px;    /* cifras                                        */
-  --cx-text-2xl:   26px;
-  --cx-tracking-label: .14em;
+  /* Escala tipográfica. B612 es ancha y de ojo grande: por debajo de 11px
+     pierde la ventaja para la que se diseñó, así que no se baja de ahí. */
+  --cx-text-micro: 11px;
+  --cx-text-xs:    12px;    /* metadatos y evidencia                         */
+  --cx-text-sm:    13px;
+  --cx-text-base:  14px;    /* cuerpo de la interfaz                         */
+  --cx-text-md:    16px;
+  --cx-text-lg:    18px;    /* título de hallazgo                            */
+  --cx-text-xl:    22px;    /* cifras                                        */
+  --cx-text-2xl:   28px;
+  /* Los rótulos ya no van en versales espaciadas: van en negrita y caja
+     normal. El token se conserva a cero para quien aún lo referencie. */
+  --cx-tracking-label: 0;
 
   /* ── Ritmo y forma ───────────────────────────────────────────────────── */
-  --cx-radius:  5px;
+  --cx-radius:  2px;        /* esquina de instrumento, no de tarjeta         */
   --cx-rule:    1px;        /* filetes de 1px; el sistema no usa sombras     */
   --cx-space-1: 4px;
   --cx-space-2: 8px;
@@ -76,32 +117,42 @@
 
 /* ── Superficie de impresión ───────────────────────────────────────────────
  * Misma identidad, soporte distinto. Las severidades se oscurecen para
- * mantener el contraste sobre papel blanco; el acento pierde luminosidad por
- * la misma razón. WeasyPrint aplica esta rama al generar el PDF.
+ * mantener el contraste sobre papel blanco; el magenta y el verde pierden
+ * luminosidad por la misma razón. WeasyPrint aplica esta rama al generar el
+ * PDF.
  */
 @media print {
   :root {
     --cx-bg:            #FFFFFF;
     --cx-surface:       #FFFFFF;
-    --cx-surface-2:     #F4F6F8;
-    --cx-surface-3:     #EDF0F4;
-    --cx-border:        #D6DCE4;
-    --cx-border-strong: #AEB8C6;
+    --cx-surface-2:     #F3F6FA;
+    --cx-surface-3:     #EAEFF6;
+    --cx-border:        #D3DBE6;
+    --cx-border-strong: #A9B6C8;
 
-    --cx-fg:            #11151B;
-    --cx-fg-dim:        #4F5968;
-    --cx-fg-faint:      #7B8593;
+    --cx-fg:            #0B1220;
+    --cx-fg-body:       #1E2838;
+    --cx-fg-dim:        #47546A;
+    --cx-fg-faint:      #5E6B80;
+    --cx-code:          #1E2838;
 
-    --cx-accent:        #0C6A61;
-    --cx-accent-dim:    #9FD5CE;
+    --cx-accent:        #A3147F;
+    --cx-accent-dim:    #E9B6DC;
     --cx-accent-ink:    #FFFFFF;
+
+    --cx-ok:            #14733A;
+    --cx-ok-dim:        #B5E3C6;
 
     --cx-crit:          #C2122A;
     --cx-high:          #A8530A;
     --cx-med:           #7D6200;
-    --cx-low:           #1F5A96;
+    --cx-low:           #0B6A94;
     --cx-info:          #5B6474;
     --cx-sev-ink:       #FFFFFF;
+    --cx-crit-tint:     rgba(194, 18, 42, .08);
+    --cx-crit-fg:       #8E0D1F;
+    --cx-high-tint:     rgba(168, 83, 10, .09);
+    --cx-high-fg:       #7A3C07;
     --cx-mark:          rgba(194, 18, 42, .14);
     --cx-mark-fg:       #8E0D1F;
 
@@ -112,12 +163,16 @@
 /* La misma paleta de impresión, aplicable a pantalla para previsualizar el
  * informe tal y como saldrá en papel. */
 .cx-print {
-  --cx-bg: #FFFFFF; --cx-surface: #FFFFFF; --cx-surface-2: #F4F6F8;
-  --cx-surface-3: #EDF0F4; --cx-border: #D6DCE4; --cx-border-strong: #AEB8C6;
-  --cx-fg: #11151B; --cx-fg-dim: #4F5968; --cx-fg-faint: #7B8593;
-  --cx-accent: #0C6A61; --cx-accent-dim: #9FD5CE; --cx-accent-ink: #FFFFFF;
+  --cx-bg: #FFFFFF; --cx-surface: #FFFFFF; --cx-surface-2: #F3F6FA;
+  --cx-surface-3: #EAEFF6; --cx-border: #D3DBE6; --cx-border-strong: #A9B6C8;
+  --cx-fg: #0B1220; --cx-fg-body: #1E2838; --cx-fg-dim: #47546A;
+  --cx-fg-faint: #5E6B80; --cx-code: #1E2838;
+  --cx-accent: #A3147F; --cx-accent-dim: #E9B6DC; --cx-accent-ink: #FFFFFF;
+  --cx-ok: #14733A; --cx-ok-dim: #B5E3C6;
   --cx-crit: #C2122A; --cx-high: #A8530A; --cx-med: #7D6200;
-  --cx-low: #1F5A96; --cx-info: #5B6474; --cx-sev-ink: #FFFFFF;
+  --cx-low: #0B6A94; --cx-info: #5B6474; --cx-sev-ink: #FFFFFF;
+  --cx-crit-tint: rgba(194, 18, 42, .08); --cx-crit-fg: #8E0D1F;
+  --cx-high-tint: rgba(168, 83, 10, .09); --cx-high-fg: #7A3C07;
   --cx-mark: rgba(194, 18, 42, .14); --cx-mark-fg: #8E0D1F;
   color-scheme: light;
 }
@@ -131,3 +186,24 @@
 .sev-medium   { --cx-sev: var(--cx-med) }
 .sev-low      { --cx-sev: var(--cx-low) }
 .sev-info     { --cx-sev: var(--cx-info) }
+
+/* ── Figura de severidad ───────────────────────────────────────────────────
+ * La forma repite lo que dice el color. Vive aquí, y no en un componente,
+ * para que el informe impreso use exactamente las mismas figuras que la
+ * interfaz: `<i class="cx-fig sev-high"></i>`.
+ */
+.cx-fig {
+  display: inline-block; flex: none; box-sizing: border-box;
+  width: .78em; height: .78em; vertical-align: -.04em;
+  background: var(--cx-sev, var(--cx-info));
+}
+.cx-fig.sev-critical { transform: rotate(45deg) scale(.92); }
+/* El triángulo se hace con bordes y no con clip-path: WeasyPrint no lo
+   entiende, y en el PDF un «alto» habría salido cuadrado, igual que un
+   «medio». */
+.cx-fig.sev-high     { width: 0; height: 0; background: transparent;
+                       border-style: solid; border-width: 0 .46em .8em .46em;
+                       border-color: transparent transparent var(--cx-sev) transparent; }
+.cx-fig.sev-low      { border-radius: 50%; }
+.cx-fig.sev-info     { border-radius: 50%; background: transparent;
+                       border: .14em solid var(--cx-sev); }

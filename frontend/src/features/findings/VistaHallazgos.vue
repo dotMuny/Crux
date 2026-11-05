@@ -8,12 +8,12 @@ import PanelDeHallazgo from './PanelDeHallazgo.vue'
 const sesion = useSesion()
 
 const ESTADO_ES: Record<string, string> = {
-  new: 'nuevo', confirmed: 'confirmado', false_positive: 'falso pos.',
+  new: 'sin triar', confirmed: 'confirmado', false_positive: 'falso pos.',
   fixed: 'corregido', accepted_risk: 'riesgo acept.',
 }
 
 const contenedor = ref<HTMLElement | null>(null)
-const ALTURA_FILA = 56
+const ALTURA_FILA = 60
 
 // Virtualización: un escaneo de una intranet grande pasa de mil hallazgos, y
 // pintarlos todos deja la lista pegajosa justo cuando más se desplaza.
@@ -82,7 +82,7 @@ const hayFiltros = computed(() =>
                  : f.valor }}
             </span>
             <span
-              class="ml-auto font-mono text-[11.5px] tabular-nums"
+              class="ml-auto font-mono text-[12px] tabular-nums"
               :class="grupo.set.has(f.valor) ? 'text-accent' : 'text-fg-faint'"
             >{{ f.n }}</span>
           </button>
@@ -93,7 +93,7 @@ const hayFiltros = computed(() =>
         v-if="hayFiltros"
         class="mx-4 text-[12px] text-accent hover:underline"
         @click="sesion.limpiarFiltros()"
-      >limpiar filtros</button>
+      >Quitar los filtros</button>
     </nav>
 
     <!-- Lista -->
@@ -109,7 +109,7 @@ const hayFiltros = computed(() =>
           <input
             v-model="sesion.busqueda"
             type="search"
-            placeholder="filtrar por título, host, CWE o check-id…"
+            placeholder="Filtrar por título, host, CWE o check-id"
             aria-label="Filtrar hallazgos"
             class="flex-1 min-w-0 bg-transparent border-0 outline-none text-fg
                    font-mono text-[13px] placeholder:text-fg-faint"
@@ -131,8 +131,8 @@ const hayFiltros = computed(() =>
             :key="fila.key as number"
             class="absolute top-0 left-0 w-full grid items-center gap-[11px] text-left
                    border-b border-line pr-4
-                   grid-cols-[3px_62px_minmax(0,1fr)_178px_74px]
-                   max-[1180px]:grid-cols-[3px_58px_minmax(0,1fr)_72px]"
+                   grid-cols-[44px_58px_minmax(0,1fr)_178px_104px]
+                   max-[1180px]:grid-cols-[44px_58px_minmax(0,1fr)_104px]"
             :style="{ height: `${fila.size}px`, transform: `translateY(${fila.start}px)` }"
             :class="sesion.visibles[fila.index].id === sesion.actual?.id
               ? 'bg-surface-2' : 'hover:bg-surface'"
@@ -148,7 +148,7 @@ const hayFiltros = computed(() =>
                 :class="sesion.visibles[fila.index].status === 'false_positive'
                   ? 'text-fg-faint line-through' : ''"
               >{{ sesion.visibles[fila.index].title }}</span>
-              <span class="block font-mono text-[11.5px] text-fg-faint mt-[3px] truncate">
+              <span class="block font-mono text-[12px] text-fg-faint mt-[3px] truncate">
                 {{ sesion.visibles[fila.index].source }}:{{ sesion.visibles[fila.index].check_id }}
                 <template v-if="sesion.visibles[fila.index].cwe.length">
                   · {{ sesion.visibles[fila.index].cwe[0] }}
@@ -162,11 +162,13 @@ const hayFiltros = computed(() =>
               {{ sesion.visibles[fila.index].target }}
             </span>
             <span
-              class="lbl text-right"
+              class="text-[13px] text-right"
               :class="{
-                'text-crit': sesion.visibles[fila.index].status === 'confirmed',
-                'text-med': sesion.visibles[fila.index].status === 'accepted_risk',
-                'line-through': sesion.visibles[fila.index].status === 'false_positive',
+                'text-high-fg font-bold': sesion.visibles[fila.index].status === 'new',
+                'text-fg': sesion.visibles[fila.index].status === 'confirmed',
+                'text-fg-dim': sesion.visibles[fila.index].status === 'accepted_risk',
+                'text-ok': sesion.visibles[fila.index].status === 'fixed',
+                'text-fg-faint line-through': sesion.visibles[fila.index].status === 'false_positive',
               }"
             >{{ ESTADO_ES[sesion.visibles[fila.index].status] }}</span>
           </button>

@@ -64,10 +64,10 @@ async function montar() {
     const tema = EditorView.theme({
       '&': {
         backgroundColor: 'var(--cx-surface-3)',
-        color: '#B9C4D4',
+        color: 'var(--cx-code)',
         fontSize: 'var(--cx-text-xs)',
       },
-      '.cm-content': { fontFamily: 'var(--cx-mono)', padding: '10px 0' },
+      '.cm-content': { fontFamily: 'var(--cx-pre)', padding: '10px 0' },
       '.cm-gutters': {
         backgroundColor: 'var(--cx-surface-2)',
         color: 'var(--cx-fg-faint)',
@@ -75,12 +75,12 @@ async function montar() {
         borderRight: '1px solid var(--cx-border)',
       },
       '.cm-scroller': { lineHeight: '1.7' },
-      '.cm-changedLine': { backgroundColor: 'rgba(242,193,75,.10)' },
-      '.cm-deletedChunk': { backgroundColor: 'rgba(255,77,94,.12)' },
-      '.cm-insertedLine': { backgroundColor: 'rgba(63,213,190,.12)' },
-      '.cm-changedText': { background: 'rgba(242,193,75,.26)' },
-      '&.cm-merge-a .cm-changedLine': { backgroundColor: 'rgba(255,77,94,.10)' },
-      '&.cm-merge-b .cm-changedLine': { backgroundColor: 'rgba(63,213,190,.10)' },
+      '.cm-changedLine': { backgroundColor: 'rgba(245,230,99,.09)' },
+      '.cm-deletedChunk': { backgroundColor: 'rgba(255,77,77,.13)' },
+      '.cm-insertedLine': { backgroundColor: 'rgba(87,227,137,.12)' },
+      '.cm-changedText': { background: 'rgba(245,230,99,.24)' },
+      '&.cm-merge-a .cm-changedLine': { backgroundColor: 'rgba(255,77,77,.11)' },
+      '&.cm-merge-b .cm-changedLine': { backgroundColor: 'rgba(87,227,137,.10)' },
     }, { dark: true })
 
     const comunes = [
@@ -132,11 +132,11 @@ onBeforeUnmount(destruir)
 
     <template v-else-if="datos?.antes && datos?.ahora">
       <div class="flex items-center gap-3 flex-wrap px-[15px] py-2 bg-surface-2
-                  border-b border-line font-mono text-[11.5px] text-fg-dim">
+                  border-b border-line font-mono text-[12px] text-fg-dim">
         <span>escaneo {{ datos.antes.scan_id }} <span class="text-fg-faint">→</span>
           escaneo {{ datos.ahora.scan_id }}</span>
         <span
-          class="lbl !text-[9.5px] ml-auto"
+          class="lbl !text-[12px] ml-auto"
           :class="datos.identicas ? 'text-fg-faint' : 'text-med'"
         >{{ datos.identicas ? 'respuesta idéntica' : 'la respuesta ha cambiado' }}</span>
       </div>

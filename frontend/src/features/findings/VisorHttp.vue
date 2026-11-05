@@ -31,9 +31,9 @@ const lineas = computed<Trozo[][]>(() =>
 <template>
   <pre
     class="m-0 px-[15px] py-[13px] overflow-x-auto bg-surface-3 border-b border-line
-           font-mono text-[11.5px] leading-[1.72] text-[#B9C4D4] whitespace-pre"
+           font-pre text-[12px] leading-[1.72] text-code whitespace-pre"
   ><template v-for="(linea, i) in lineas" :key="i"><span
       v-for="(t, j) in linea" :key="j"
-      :class="t.tipo === 'cabecera' ? 'text-accent' : ''"
+      :class="t.tipo === 'cabecera' ? 'text-low' : ''"
     >{{ t.valor }}</span>{{ '\n' }}</template></pre>
 </template>

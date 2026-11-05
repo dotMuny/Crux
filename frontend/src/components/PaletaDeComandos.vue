@@ -16,15 +16,17 @@ interface Orden { etiqueta: string; atajo?: string; hacer: () => void }
 const ordenes = computed<Orden[]>(() => {
   const h = sesion.actual
   const base: Orden[] = [
+    { etiqueta: 'Ir al panel', hacer: () => router.push('/panel') },
     { etiqueta: 'Ir a hallazgos', hacer: () => router.push('/hallazgos') },
+    { etiqueta: 'Ir a superficie', hacer: () => router.push('/superficie') },
     { etiqueta: 'Ir a escaneos', hacer: () => router.push('/escaneos') },
     { etiqueta: 'Limpiar todos los filtros', hacer: () => sesion.limpiarFiltros() },
   ]
   if (h) {
     base.unshift(
-      { etiqueta: `Confirmar «${h.title}»`, atajo: '⇧C',
+      { etiqueta: `Confirmar «${h.title}»`, atajo: 'Mayús C',
         hacer: () => sesion.triar(h, 'confirmed') },
-      { etiqueta: 'Marcar como falso positivo', atajo: '⇧F',
+      { etiqueta: 'Marcar como falso positivo', atajo: 'Mayús F',
         hacer: () => sesion.triar(h, 'false_positive') },
       { etiqueta: 'Aceptar el riesgo', hacer: () => sesion.triar(h, 'accepted_risk') },
     )
@@ -84,11 +86,11 @@ function teclas(e: KeyboardEvent) {
   <div
     v-if="abierta"
     class="fixed inset-0 z-20 flex items-start justify-center pt-[12vh] px-4
-           bg-[rgba(5,8,13,.72)]"
+           bg-[rgba(3,6,12,.8)]"
     @click.self="abierta = false"
   >
     <div class="w-full max-w-[540px] bg-surface-2 border border-line-strong
-                rounded-lg overflow-hidden shadow-[0_24px_60px_rgba(0,0,0,.6)]">
+                rounded-cx overflow-hidden shadow-[0_24px_60px_rgba(0,0,0,.6)]">
       <input
         ref="campo"
         v-model="consulta"
@@ -109,7 +111,7 @@ function teclas(e: KeyboardEvent) {
           @click="ejecutar(i)"
         >
           {{ o.etiqueta }}
-          <code v-if="o.atajo" class="ml-auto font-mono text-[11px] text-fg-faint">{{ o.atajo }}</code>
+          <code v-if="o.atajo" class="ml-auto font-mono text-[12px] text-fg-faint">{{ o.atajo }}</code>
         </li>
 
         <template v-if="filtradas.hallazgos.length">
@@ -121,9 +123,9 @@ function teclas(e: KeyboardEvent) {
                    text-fg-dim hover:bg-surface-3 hover:text-fg cursor-pointer"
             @click="irAHallazgo(h.id)"
           >
-            <Severidad :nivel="h.severity" como="punto" />
+            <Severidad :nivel="h.severity" como="figura" />
             <span class="truncate">{{ h.title }}</span>
-            <code class="ml-auto font-mono text-[11px] text-fg-faint truncate max-w-[40%]">
+            <code class="ml-auto font-mono text-[12px] text-fg-faint truncate max-w-[40%]">
               {{ h.target }}
             </code>
           </li>

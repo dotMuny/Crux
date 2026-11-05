@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { api } from '@/api/client'
 import { useSesion } from '@/stores/sesion'
 import Chip from '@/components/Chip.vue'
+import Severidad from '@/components/Severidad.vue'
 import VisorHttp from './VisorHttp.vue'
 import VisorDiff from './VisorDiff.vue'
 import type { Evidencia } from '@/api/types'
@@ -12,13 +13,6 @@ const evidencias = ref<Evidencia[]>([])
 const pestana = ref<'peticion' | 'respuesta' | 'diff'>('respuesta')
 const cargandoEvidencia = ref(false)
 
-const TOKEN: Record<string, string> = {
-  critical: 'var(--cx-crit)', high: 'var(--cx-high)', medium: 'var(--cx-med)',
-  low: 'var(--cx-low)', info: 'var(--cx-info)',
-}
-const SEV_ES: Record<string, string> = {
-  critical: 'crítica', high: 'alta', medium: 'media', low: 'baja', info: 'info',
-}
 const ESTADO_ES: Record<string, string> = {
   new: 'sin triar', confirmed: 'confirmado', false_positive: 'falso positivo',
   fixed: 'corregido', accepted_risk: 'riesgo aceptado',
@@ -33,6 +27,11 @@ watch(() => h.value?.id, async (id) => {
   cargandoEvidencia.value = true
   try {
     evidencias.value = await api.evidencia(id)
+    // La pestaña que se abre es la que tiene algo. Antes se abría siempre
+    // «Respuesta», y un hallazgo que solo guardó la petición enseñaba un
+    // recuadro vacío.
+    const e = evidencias.value[0]
+    if (e) pestana.value = e.response ? 'respuesta' : e.request ? 'peticion' : 'diff'
   } finally {
     cargandoEvidencia.value = false
   }
@@ -69,18 +68,15 @@ function triar(estado: string) {
     <template v-else>
       <div class="px-[18px] pt-4 pb-[14px] border-b border-line">
         <div class="flex items-center gap-[9px] flex-wrap mb-[9px]">
-          <span
-            class="lbl !text-[10px] px-2 py-[3px] rounded-[3px]"
-            :style="{ background: TOKEN[h.severity], color: 'var(--cx-sev-ink)' }"
-          >{{ SEV_ES[h.severity] }}</span>
+          <Severidad :nivel="h.severity" como="ambas" :talla="16" />
           <Chip>{{ h.source }}:{{ h.check_id }}</Chip>
           <Chip v-for="c in h.cwe" :key="c">{{ c }}</Chip>
           <Chip v-if="h.cvss_score">CVSS {{ h.cvss_score.toFixed(1) }}</Chip>
           <Chip v-if="h.status !== 'new'" tono="acento">{{ ESTADO_ES[h.status] ?? h.status }}</Chip>
         </div>
-        <h1 class="m-0 text-[17.5px] leading-[1.32] font-normal text-balance">{{ h.title }}</h1>
-        <code class="block mt-[10px] font-mono text-[12px] leading-[1.5] text-accent break-words">
-          {{ h.target }}<template v-if="h.param"> · parámetro {{ h.param }}</template>
+        <h1 class="m-0 text-[19px] leading-[1.28] font-bold text-balance">{{ h.title }}</h1>
+        <code class="block mt-[10px] font-mono text-[12px] leading-[1.5] text-fg break-words">
+          {{ h.target }}<template v-if="h.param">, parámetro {{ h.param }}</template>
         </code>
       </div>
 
@@ -94,7 +90,7 @@ function triar(estado: string) {
              ]"
              :key="m.k"
              class="bg-surface px-3 py-[9px] min-w-0">
-          <dt class="lbl !text-[9.5px] mb-1">{{ m.k }}</dt>
+          <dt class="lbl !text-[12px] mb-1">{{ m.k }}</dt>
           <dd class="m-0 font-mono text-[12.5px] tabular-nums break-words">{{ m.v }}</dd>
         </div>
       </dl>
@@ -102,14 +98,13 @@ function triar(estado: string) {
       <div class="px-[18px] py-4">
         <template v-if="h.description">
           <h2 class="lbl m-0 mb-[7px]">Qué ocurre</h2>
-          <p class="m-0 mb-[17px] text-[13.5px] leading-[1.62] text-[#CBD4E2] max-w-[62ch]">
+          <p class="m-0 mb-[17px] text-[13.5px] leading-[1.62] text-fg-body max-w-[62ch]">
             {{ h.description }}
           </p>
         </template>
         <template v-if="h.remediation">
           <h2 class="lbl m-0 mb-[7px]">Cómo se corrige</h2>
-          <p class="m-0 mb-[17px] text-[13.5px] leading-[1.62] text-[#CBD4E2] max-w-[62ch]
-                    border-l-2 border-accent-dim pl-[13px]">
+          <p class="m-0 mb-[17px] text-[13.5px] leading-[1.62] text-fg-body max-w-[62ch]">
             {{ h.remediation }}
           </p>
         </template>
@@ -125,7 +120,7 @@ function triar(estado: string) {
             { id: 'diff', texto: 'Diff', hay: true },
           ]"
           :key="p.id"
-          class="flex-1 py-2 px-[6px] bg-surface lbl !text-[10.5px]"
+          class="flex-1 py-2 px-[6px] bg-surface lbl !text-[12px]"
           :class="[
             pestana === p.id ? '!bg-surface-3 !text-accent' : 'hover:!text-fg-dim',
             !p.hay ? 'opacity-40 cursor-not-allowed' : '',
@@ -152,7 +147,7 @@ function triar(estado: string) {
         <button
           v-for="a in ACCIONES"
           :key="a.estado"
-          class="border rounded-cx px-3 py-[6px] text-[12.5px]"
+          class="border rounded-cx px-[14px] min-h-[38px] text-[13px]"
           :class="a.principal
             ? 'bg-accent border-accent text-accent-ink font-bold hover:brightness-110'
             : 'border-line-strong text-fg-dim hover:border-accent-dim hover:text-fg'"
@@ -160,7 +155,7 @@ function triar(estado: string) {
           :title="h.status === a.estado ? 'Pulsa otra vez para quitar la marca' : ''"
           @click="triar(a.estado)"
         >{{ h.status === a.estado ? '✓ ' + a.texto : a.texto }}</button>
-        <p v-if="h.status !== 'new'" class="w-full m-0 text-[11.5px] text-fg-faint">
+        <p v-if="h.status !== 'new'" class="w-full m-0 text-[12px] text-fg-faint">
           Marcado como «{{ ESTADO_ES[h.status] ?? h.status }}». Pulsa el mismo
           botón para quitarlo y dejarlo sin triar.
         </p>

@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import base64
 import html as html_escape
 import re
 from datetime import datetime, timezone
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Sequence
 
-from jinja2 import Environment, FileSystemLoader, select_autoescape
+from jinja2 import Environment, FileSystemLoader
+from markupsafe import Markup
 
 from ..findings import Finding
 from ..scope import Scope
@@ -17,6 +20,41 @@ from ..severity import Severity
 _HERE = Path(__file__).parent
 _TEMPLATES = _HERE / "templates"
 _TOKENS = _HERE / "tokens.css"
+_FONTS = _HERE / "fonts"
+
+# Familia, peso y fichero de cada corte que viaja dentro del informe.
+_CORTES = (
+    ("B612", 400, "B612-Regular.woff2"),
+    ("B612", 700, "B612-Bold.woff2"),
+    ("B612 Mono", 400, "B612Mono-Regular.woff2"),
+)
+
+
+@lru_cache(maxsize=1)
+def fuentes_en_linea() -> str:
+    """Las `@font-face` del informe, con la tipografía dentro.
+
+    El informe se abre en equipos que no son el del analista —el de quien lo
+    recibe, un visor de PDF, un servidor de correo que lo previsualiza—, y en
+    ninguno está instalada la B612. Enlazarla sería una petición a la red desde
+    un documento que promete no hacer ninguna; dejarla al sistema es que cada
+    lector vea una letra distinta. Así que va en base64, como el resto del
+    estilo. Son unos 190 kB por informe.
+
+    Si falta algún fichero no se rompe nada: ese corte no se declara y el
+    navegador sigue con la siguiente familia de la pila.
+    """
+    reglas = []
+    for familia, peso, fichero in _CORTES:
+        ruta = _FONTS / fichero
+        if not ruta.is_file():
+            continue
+        datos = base64.b64encode(ruta.read_bytes()).decode("ascii")
+        reglas.append(
+            f'@font-face{{font-family:"{familia}";font-weight:{peso};font-style:normal;'
+            f'src:url(data:font/woff2;base64,{datos}) format("woff2")}}'
+        )
+    return "\n".join(reglas)
 
 LEVEL_TOKEN = {
     "critical": "crit", "high": "high", "medium": "med", "low": "low", "info": "info",
@@ -30,16 +68,29 @@ ORDER = ["critical", "high", "medium", "low", "info"]
 _HEADER_LINE = re.compile(r"^([A-Za-z][A-Za-z0-9-]*):", re.M)
 
 
-def _http_filter(raw: str) -> str:
-    """Resalta los nombres de cabecera en un volcado HTTP crudo."""
+def _http_filter(raw: str) -> Markup:
+    """Resalta los nombres de cabecera en un volcado HTTP crudo.
+
+    Escapa primero y marca después. Devuelve `Markup` porque el entorno
+    escapa todo lo demás: sin esa marca, los `<span>` que se añaden aquí
+    saldrían como texto.
+    """
     escaped = html_escape.escape(raw or "")
-    return _HEADER_LINE.sub(r'<span class="hk">\1</span>:', escaped)
+    return Markup(_HEADER_LINE.sub(r'<span class="hk">\1</span>:', escaped))
 
 
 def _environment() -> Environment:
     env = Environment(
         loader=FileSystemLoader(_TEMPLATES),
-        autoescape=select_autoescape(["html", "xml"]),
+        # Escapado SIEMPRE, sin mirar la extensión. Antes era
+        # `select_autoescape(["html", "xml"])`, que decide por cómo termina el
+        # nombre del fichero: la plantilla se llama `report.html.j2`, termina
+        # en `.j2`, y el escapado quedaba apagado sin que nada lo dijera. El
+        # título, la descripción y la evidencia de un hallazgo salen del
+        # objetivo auditado; un objetivo hostil podía meter un `<script>` en el
+        # informe que luego abre el analista o su cliente. Lo poco que es HTML
+        # de verdad —el estilo, el primer párrafo— se marca a mano.
+        autoescape=True,
         trim_blocks=True,
         lstrip_blocks=True,
     )
@@ -52,7 +103,9 @@ def _lede(counts: dict[str, int], alive: int, probed: int, targets: int,
     """Primer párrafo del informe: lo que lee quien decide, no quien corrige."""
     critical, high = counts.get("critical", 0), counts.get("high", 0)
     if kind == "code":
-        parts = [f"Se analizó el código de {ruta or 'el repositorio'}, "
+        # La ruta la escribe quien lanza el análisis, pero este párrafo se
+        # inserta como HTML: se escapa igual que todo lo demás.
+        parts = [f"Se analizó el código de {html_escape.escape(ruta) or 'el repositorio'}, "
                  "sus dependencias y sus secretos. No se usó la red."]
     else:
         parts = [
@@ -148,6 +201,7 @@ def build_context(
         "tools": ", ".join(tools) or "módulos propios",
         "version": version,
         "tokens": _TOKENS.read_text(encoding="utf-8"),
+        "fuentes": fuentes_en_linea(),
     }
 
 

@@ -19,6 +19,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { api } from '@/api/client'
+import Severidad from '@/components/Severidad.vue'
 import { useSesion } from '@/stores/sesion'
 import type { NodoDeSuperficie, Superficie } from '@/api/types'
 
@@ -184,7 +185,7 @@ async function dibujar() {
           label: denso.value ? '' : 'data(label)',
           color: leer('--cx-fg-dim'),
           'font-family': leer('--cx-mono'),
-          'font-size': '9px',
+          'font-size': '10px',
           'text-valign': 'bottom',
           'text-margin-y': 5,
           'text-max-width': '140px',
@@ -193,27 +194,43 @@ async function dibujar() {
           'border-width': 0,
         },
       },
+      // Dos familias que no se confunden. La ESTRUCTURA —host, servicio,
+      // ruta— va en contorno: dice por dónde se llega. Los HALLAZGOS van
+      // rellenos y con la figura de su severidad, la misma que en el resto de
+      // la interfaz: rombo, triángulo, cuadrado, círculo y círculo hueco.
+      { selector: 'node[tipo="host"], node[tipo="servicio"], node[tipo="ruta"]',
+        style: { 'background-color': leer('--cx-bg'), 'border-width': 2,
+                 'border-color': color } },
       { selector: 'node[tipo="host"]',
-        style: { width: 26, height: 26, shape: 'round-rectangle', label: 'data(label)',
-                 'font-size': '11px', color: leer('--cx-fg') } },
+        style: { width: 30, height: 30, shape: 'round-rectangle', label: 'data(label)',
+                 'border-width': 2.5, 'font-size': '12px', color: leer('--cx-fg') } },
       { selector: 'node[tipo="servicio"]',
-        style: { width: 20, height: 20, shape: 'diamond', label: 'data(label)' } },
+        style: { width: 22, height: 22, shape: 'hexagon', label: 'data(label)' } },
       { selector: 'node[tipo="ruta"]',
-        style: { width: 12, height: 12, shape: 'ellipse' } },
-      // Una ruta sin hallazgos se dibuja hueca: está ahí, se sondeó, y no
-      // tiene nada encontrado. Distinguirlo del relleno es el punto.
+        style: { width: 13, height: 13, shape: 'ellipse' } },
+      // Una ruta sin hallazgos se queda en gris: está ahí, se sondeó, y no
+      // tiene nada encontrado.
       { selector: 'node[tipo="ruta"][?sin_hallazgos]',
-        style: { 'background-opacity': 0, 'border-width': 1.5,
-                 'border-color': leer('--cx-border-strong') } },
+        style: { 'border-width': 1.5, 'border-color': leer('--cx-border-strong') } },
       { selector: 'node[tipo="hallazgo"]',
-        style: { width: 16, height: 16, shape: 'triangle',
-                 'text-max-width': '180px' } },
+        style: { width: 13, height: 13, shape: 'rectangle', 'text-max-width': '180px' } },
+      { selector: 'node[tipo="hallazgo"][severidad="critical"]',
+        style: { width: 21, height: 21, shape: 'diamond' } },
+      { selector: 'node[tipo="hallazgo"][severidad="high"]',
+        style: { width: 19, height: 17, shape: 'triangle' } },
+      { selector: 'node[tipo="hallazgo"][severidad="low"]',
+        style: { shape: 'ellipse' } },
+      { selector: 'node[tipo="hallazgo"][severidad="info"]',
+        style: { shape: 'ellipse', 'background-opacity': 0, 'border-width': 2,
+                 'border-color': color } },
       {
         selector: 'edge',
         style: {
           width: 1,
           'line-color': leer('--cx-border-strong'),
-          'curve-style': 'bezier',
+          // Recta: con `bezier`, dos aristas entre los mismos nodos se abren en
+          // abanico y dibujan elipses que no significan nada.
+          'curve-style': 'straight',
           'target-arrow-shape': 'none',
           opacity: 0.6,
         },
@@ -347,11 +364,14 @@ onBeforeUnmount(() => {
            redimensiona un paso por detrás del contenedor. -->
       <div ref="lienzo" class="flex-1 min-h-0 bg-bg overflow-hidden" />
 
-      <!-- Controles y leyenda. Pointer-events solo donde hay que pulsar. -->
-      <div class="absolute top-4 left-4 right-4 flex flex-col gap-2 pointer-events-none">
+      <!-- Controles y leyenda, encima del lienzo y no flotando sobre él:
+           flotando tapaban la parte alta del grafo, y «encuadrar» no puede
+           saber que ahí arriba hay algo. -->
+      <div class="order-first shrink-0 flex flex-col gap-2 px-[clamp(16px,3vw,44px)] py-3
+                  border-b border-line">
         <div class="flex items-baseline gap-3 flex-wrap">
-          <h1 class="lbl m-0">Superficie de ataque</h1>
-          <span v-if="resumen" class="font-mono text-[11px] text-fg-dim">
+          <h1 class="m-0 text-[17px] font-bold">Superficie de ataque</h1>
+          <span v-if="resumen" class="font-mono text-[12px] text-fg-dim">
             {{ resumen.hosts }} host · {{ resumen.servicios }} servicio(s) ·
             {{ resumen.rutas }} ruta(s)
             <template v-if="resumen.rutas_sin_hallazgos">
@@ -361,22 +381,22 @@ onBeforeUnmount(() => {
           </span>
           <span
             v-if="resumen && resumen.hallazgos_dibujados !== resumen.hallazgos"
-            class="text-[11.5px] text-crit"
+            class="text-[12px] text-crit"
           >
             el grafo dibuja {{ resumen.hallazgos_dibujados }} de
             {{ resumen.hallazgos }}: falta alguno y eso es un fallo, no un filtro
           </span>
-          <span v-if="resumen?.hallazgos_sin_ubicar" class="text-[11.5px] text-med">
+          <span v-if="resumen?.hallazgos_sin_ubicar" class="text-[12px] text-med">
             {{ resumen.hallazgos_sin_ubicar }} sin ubicar: llegaron con una ruta
             relativa y cuelgan de «objetivo sin host». Vuelve a escanear y
             quedarán en su sitio.
           </span>
         </div>
 
-        <div class="flex gap-2 flex-wrap items-center pointer-events-auto">
+        <div class="flex gap-2 flex-wrap items-center">
           <input
             v-model="busqueda"
-            placeholder="filtrar por ruta, título, parámetro…"
+            placeholder="Filtrar por ruta, título o parámetro"
             aria-label="Filtrar el grafo"
             class="w-[250px] bg-surface border border-line rounded-cx px-[9px] py-[5px]
                    font-mono text-[12px] text-fg outline-none focus:border-accent-dim
@@ -386,7 +406,7 @@ onBeforeUnmount(() => {
             <button
               v-for="(n, i) in ['todo', 'baja+', 'media+', 'alta+', 'crítica']"
               :key="n"
-              class="px-[9px] py-[5px] text-[11.5px] bg-surface"
+              class="px-[9px] py-[5px] text-[12px] bg-surface"
               :class="minimo === i ? '!bg-surface-3 text-accent' : 'text-fg-dim hover:text-fg'"
               :aria-pressed="minimo === i"
               @click="minimo = i"
@@ -401,7 +421,7 @@ onBeforeUnmount(() => {
             <button
               v-for="l in [{ id: 'radial', t: 'radial' }, { id: 'arbol', t: 'árbol' }]"
               :key="l.id"
-              class="px-[9px] py-[5px] text-[11.5px] bg-surface"
+              class="px-[9px] py-[5px] text-[12px] bg-surface"
               :class="disposicion === l.id ? '!bg-surface-3 text-accent' : 'text-fg-dim hover:text-fg'"
               :aria-pressed="disposicion === l.id"
               @click="disposicion = l.id as 'radial' | 'arbol'"
@@ -411,20 +431,20 @@ onBeforeUnmount(() => {
             class="bg-surface border border-line rounded-cx px-[9px] py-[5px]
                    text-[12px] text-fg-dim hover:text-fg"
             @click="encuadrar"
-          >encuadrar</button>
+          >Encuadrar</button>
         </div>
 
-        <div class="flex gap-3 flex-wrap font-mono text-[11px] text-fg-dim">
-          <span v-for="(token, nivel) in TOKEN_SEV" :key="nivel" class="flex items-center gap-[5px]">
-            <i class="size-[7px] rounded-[2px]" :style="{ background: `var(${token})` }" />
+        <div class="flex gap-x-4 gap-y-1 flex-wrap text-[12px] text-fg-dim">
+          <span v-for="(_, nivel) in TOKEN_SEV" :key="nivel" class="flex items-center gap-[6px]">
+            <i aria-hidden="true" class="cx-fig" :class="`sev-${nivel}`" style="font-size: 13px" />
             {{ SEV_ES[nivel] }}
           </span>
         </div>
-        <div class="flex gap-3 flex-wrap font-mono text-[11px] text-fg-faint">
-          <span>▭ host</span><span>◆ servicio</span><span>● ruta</span>
-          <span>○ ruta sin hallazgos</span><span>▲ hallazgo</span>
-        </div>
-        <p v-if="denso" class="m-0 text-[11px] text-fg-faint">
+        <p class="m-0 text-[12px] text-fg-dim">
+          Relleno, un hallazgo. En contorno, por dónde se llega: cuadrado el
+          host, hexágono el servicio, círculo la ruta.
+        </p>
+        <p v-if="denso" class="m-0 text-[12px] text-fg-faint">
           Pasa el ratón por un nodo para ver su nombre y su camino; púlsalo para
           abrir su ficha.
         </p>
@@ -466,34 +486,29 @@ onBeforeUnmount(() => {
       aria-live="polite"
     >
       <div class="flex items-start gap-2">
-        <h2 class="m-0 flex-1 text-[14px] font-normal leading-snug break-words">
+        <h2 class="m-0 flex-1 text-[16px] font-bold leading-snug break-words">
           {{ nodo.detalle?.titulo || nodo.label }}
         </h2>
         <button class="text-fg-faint hover:text-fg text-[16px] leading-none"
                 aria-label="Cerrar la ficha" @click="nodo = null">×</button>
       </div>
       <div class="flex gap-2 flex-wrap">
-        <span class="lbl !text-[9.5px] px-[6px] py-[2px] rounded-[3px] border border-line-strong">
+        <span class="text-[12px] text-fg-dim px-[8px] py-[2px] rounded-cx border border-line-strong">
           {{ nodo.tipo }}
         </span>
-        <span
-          v-if="nodo.severidad"
-          class="lbl !text-[9.5px] px-[6px] py-[2px] rounded-[3px]"
-          :style="{ background: `var(${TOKEN_SEV[nodo.severidad]})`,
-                    color: 'var(--cx-sev-ink)' }"
-        >{{ SEV_ES[nodo.severidad] }}</span>
+        <Severidad v-if="nodo.severidad" :nivel="nodo.severidad" como="ambas" />
         <span v-if="nodo.sin_hallazgos"
-              class="lbl !text-[9.5px] px-[6px] py-[2px] rounded-[3px] border border-line-strong">
+              class="text-[12px] text-fg-dim px-[8px] py-[2px] rounded-cx border border-line-strong">
           sin hallazgos
         </span>
       </div>
 
       <dl class="m-0 flex flex-col gap-[7px]">
         <div v-for="c in campos" :key="c.k" class="flex gap-3">
-          <dt class="lbl w-[92px] shrink-0 !normal-case !tracking-normal !text-[11px]">
+          <dt class="lbl w-[92px] shrink-0 !normal-case !tracking-normal !text-[12px]">
             {{ c.k }}
           </dt>
-          <dd class="m-0 flex-1 min-w-0 font-mono text-[11.5px] text-fg break-words">
+          <dd class="m-0 flex-1 min-w-0 font-mono text-[12px] text-fg break-words">
             {{ c.v }}
           </dd>
         </div>

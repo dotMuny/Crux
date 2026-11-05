@@ -825,3 +825,74 @@ decisión explícita y no un silencio.
 Se rechazó que la suite levantase la aplicación por su cuenta: arrancar
 procesos desde los tests oculta el acoplamiento en vez de enseñarlo, y la
 petición era que el fallo se viera, no que desapareciera.
+
+## 46. El sistema de diseño es «Retícula»: una cabina, no una consola
+
+La interfaz se rehízo entera sobre una idea prestada de la aviación. No por
+estética: una cabina resuelve el mismo problema que esta herramienta —mucha
+información, poca atención disponible y un error de lectura que sale caro—, y
+lo resuelve con reglas que se pueden seguir al pie de la letra.
+
+**Cabina oscura.** Un aviso apagado significa que ahí no hay nada que atender.
+Por eso un cero es gris y no verde: el verde también llama la vista. Los
+avisos del panel solo se encienden en rojo o en ámbar, y solo cuando piden
+algo. Un `null` no es un cero —es «no se puede saber», como al comparar con un
+escaneo anterior que no existe— y se pinta con una raya.
+
+**El color tiene significado fijo.** Rojo es aviso, ámbar es precaución, cian
+es informativo, verde es normal o corregido, magenta es lo que está activo o
+se puede accionar. Ninguno decora. De ahí salieron varios cambios que no eran
+de estilo: «corregido» dejó de compartir color con los botones, el estado del
+triaje dejó de pintarse con colores de severidad —«confirmado» en rojo se
+leía como un crítico—, y la barra de «quién lo encontró» es gris porque ahí
+el color no significaba nada.
+
+**La forma repite lo que dice el color.** Rombo, triángulo, cuadrado, círculo
+y círculo hueco. La rampa rojo-ámbar-amarillo es indistinguible bajo
+protanopía (§18); con la figura deja de importar. Las figuras están definidas
+en `tokens.css` para que el informe use las mismas que la interfaz, y el
+triángulo se hace con bordes y no con `clip-path` porque WeasyPrint no lo
+entiende: en el PDF un «alto» habría salido cuadrado, igual que un «medio».
+
+**El radar.** Dos reglas de lectura: cuanto más cerca del centro, más grave;
+cada dirección es una ruta. Cada franja de cada sector tiene un aforo según
+el arco que le toca, y lo que no cabe se resume en un «+n» en vez de
+amontonarse. Solo dibuja lo abierto: un falso positivo ya tiene dueño y no
+debe seguir pidiendo atención desde la primera pantalla.
+
+**La tipografía es B612**, la que Airbus encargó para pantallas de cabina.
+Sale del paquete `fonts-b612` del repositorio firmado de la distribución, va
+empaquetada con la interfaz y, en base64, dentro de cada informe: ni una
+petición a la red. Hubo que renunciar a la B612 Mono para los datos en línea:
+pega el punto y los dos puntos al borde izquierdo de su celda, que en un
+altímetro junta los dígitos y aquí separa una dirección —«127. 0. 0. 1:
+8999»—. Las cifras de la B612 normal ya miden todas lo mismo, así que las
+columnas siguen alineadas; la mono queda solo para los bloques crudos.
+
+**Lo que se quitó.** La cabecera llevaba un rótulo fijo, «0 conexiones fuera
+del alcance», que no medía nada: era una cadena escrita en la plantilla. En
+una herramienta de auditoría, una constatación que no se ha constatado es
+peor que no decir nada. Volverá cuando salga de una medición.
+
+## 47. El informe ejecutaba lo que el objetivo le escribiera
+
+Al rediseñar el informe apareció que la plantilla no escapaba nada. El
+entorno de Jinja usaba `select_autoescape(["html", "xml"])`, que decide por
+la extensión del fichero; la plantilla se llama `report.html.j2`, termina en
+`.j2`, y el escapado quedaba apagado sin que nada lo dijera.
+
+El título, la descripción y la evidencia de un hallazgo salen del objetivo
+auditado. Un objetivo hostil —o uno comprometido— escribe `<script>` en una
+respuesta, Crux lo recoge como evidencia, y el analista abre el informe desde
+su disco, donde no hay política de contenido que valga. O lo abre su cliente.
+
+Ahora el escapado está siempre encendido y lo poco que es HTML de verdad —el
+estilo, el primer párrafo, el resaltado de cabeceras— se marca a mano.
+`tests/test_informe.py` prueba cinco vectores en los diez sitios donde puede
+aterrizar texto del objetivo, con sus controles negativos: escaparlo todo
+sería trivial y rompería el resaltado y el CSS sin que nada protestase.
+
+Es el segundo fallo de esta clase que aparece en el propio producto, después
+del de §44, y los dos tenían la misma forma: una protección que se daba por
+puesta y dependía de un detalle —un nombre de fichero, una ruta sin
+resolver— que nadie había mirado.

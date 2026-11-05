@@ -266,7 +266,7 @@ const CAMPO = `bg-bg border border-line rounded-cx px-3 py-[9px] font-mono text-
   <div class="overflow-y-auto">
     <div class="max-w-[940px] mx-auto px-5 py-8 flex flex-col gap-8">
       <section class="flex flex-col gap-4">
-        <h1 class="m-0 text-[21px] font-normal">Lanzar un escaneo</h1>
+        <h1 class="m-0 text-[28px] font-bold leading-tight">Lanzar un escaneo</h1>
 
         <div class="flex gap-px bg-line border border-line rounded-cx overflow-hidden w-fit">
           <button
@@ -540,7 +540,7 @@ const CAMPO = `bg-bg border border-line rounded-cx px-3 py-[9px] font-mono text-
 
       <section class="flex flex-col gap-3">
         <div class="flex items-center gap-3 flex-wrap">
-          <h2 class="lbl m-0">Escaneos</h2>
+          <h2 class="m-0 text-[17px] font-bold">Escaneos</h2>
           <button
             v-if="sesion.escaneos.length"
             class="text-[12px] text-fg-dim hover:text-fg"
@@ -594,9 +594,8 @@ const CAMPO = `bg-bg border border-line rounded-cx px-3 py-[9px] font-mono text-
           @click="abrir(e.id)"
         >
           <span class="font-mono text-[13px] text-fg-dim">#{{ e.id }}</span>
-          <span class="lbl !text-[9.5px] px-[6px] py-[2px] rounded-[3px] border"
-                :class="e.kind === 'code'
-                  ? 'border-accent-dim text-accent' : 'border-line-strong text-fg-faint'"
+          <span class="text-[12px] px-[8px] py-[2px] rounded-cx border border-line-strong"
+                :class="e.kind === 'code' ? 'text-fg' : 'text-fg-dim'"
           >{{ e.kind === 'code' ? 'código' : 'web' }}</span>
           <span class="font-mono text-[13px] truncate flex-1 min-w-[160px]">
             {{ e.targets.join(', ') || '—' }}
@@ -608,10 +607,16 @@ const CAMPO = `bg-bg border border-line rounded-cx px-3 py-[9px] font-mono text-
               class="flex items-center gap-[5px] font-mono text-[12px] tabular-nums"
               :class="e.por_severidad[nivel] ? 'text-fg' : 'text-fg-faint'"
             >
-              <Severidad :nivel="nivel" como="punto" />{{ e.por_severidad[nivel] ?? 0 }}
+              <!-- Cabina oscura también aquí: una severidad sin hallazgos
+                   se apaga en vez de seguir pidiendo la vista. -->
+              <Severidad :nivel="nivel" como="figura" :talla="13"
+                         :class="e.por_severidad[nivel] ? '' : 'opacity-30'" />
+              {{ e.por_severidad[nivel] ?? 0 }}
             </span>
           </span>
-          <span v-if="e.kind !== 'code'" class="lbl">{{ e.profile }}</span>
+          <span v-if="e.kind !== 'code'" class="text-[13px] text-fg-dim">
+            {{ ({ passive: 'pasivo', 'safe-active': 'activo seguro', aggressive: 'agresivo' } as Record<string, string>)[e.profile] ?? e.profile }}
+          </span>
         </button>
           <a
             :href="api.informe(e.id, 'pdf')"

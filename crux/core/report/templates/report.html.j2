@@ -6,7 +6,8 @@
 <title>Crux · {{ project }} · {{ scan_id }}</title>
 {# El sistema de diseño va EN LÍNEA: un informe que pidiese una hoja de estilos
    remota contradiría todo lo que esta herramienta promete. #}
-<style>{{ tokens }}</style>
+<style>{{ fuentes|safe }}</style>
+<style>{{ tokens|safe }}</style>
 <style>
 *{box-sizing:border-box}
 body{
@@ -15,36 +16,34 @@ body{
   -webkit-font-smoothing:antialiased
 }
 .sheet{max-width:1020px;margin:0 auto;padding:var(--cx-space-6) max(20px,4vw)}
-.lbl{
-  font:700 var(--cx-text-micro) var(--cx-sans);letter-spacing:var(--cx-tracking-label);
-  text-transform:uppercase;color:var(--cx-fg-faint)
-}
+.lbl{font:700 var(--cx-text-sm) var(--cx-sans);color:var(--cx-fg-dim)}
 header.head{
   display:flex;flex-wrap:wrap;gap:var(--cx-space-3) var(--cx-space-5);
   align-items:baseline;padding-bottom:var(--cx-space-4);
   border-bottom:var(--cx-rule) solid var(--cx-border-strong)
 }
-.brand{font:900 var(--cx-text-md) var(--cx-sans);letter-spacing:.16em;text-transform:uppercase}
-.brand i{
-  display:inline-block;width:7px;height:7px;border-radius:50%;
-  background:var(--cx-accent);margin-right:8px
-}
+.brand{display:inline-flex;align-items:center;gap:9px;font:700 var(--cx-text-lg) var(--cx-sans);letter-spacing:.14em}
+.brand svg{width:22px;height:22px}
 .ctx{font:400 var(--cx-text-sm) var(--cx-mono);color:var(--cx-fg-dim)}
 .ctx b{color:var(--cx-fg);font-weight:400}
+/* Verde, no magenta: esto no se puede pulsar, es una constatación. */
 .egress{
-  margin-left:auto;font:700 var(--cx-text-micro) var(--cx-sans);
-  letter-spacing:var(--cx-tracking-label);text-transform:uppercase;color:var(--cx-accent);
-  border:var(--cx-rule) solid var(--cx-accent-dim);padding:4px 10px;border-radius:999px
+  margin-left:auto;font:700 var(--cx-text-xs) var(--cx-sans);color:var(--cx-ok);
+  border:1.5px solid var(--cx-ok-dim);padding:5px 11px;border-radius:var(--cx-radius)
 }
-h1{margin:var(--cx-space-5) 0 var(--cx-space-3);font:400 var(--cx-text-2xl)/1.25 var(--cx-sans);text-wrap:balance}
+h1{margin:var(--cx-space-5) 0 var(--cx-space-3);font:700 var(--cx-text-2xl)/1.15 var(--cx-sans);text-wrap:balance}
 .lede{margin:0 0 var(--cx-space-5);color:var(--cx-fg-dim);max-width:68ch;font-size:var(--cx-text-md)}
-.lede b{color:var(--cx-crit);font-weight:700}
+.lede b{color:var(--cx-crit-fg);font-weight:700}
 
 .band{display:flex;flex-direction:column;gap:var(--cx-space-2);margin-bottom:var(--cx-space-3)}
-.track{display:flex;height:10px;border-radius:2px;overflow:hidden;background:var(--cx-surface-3)}
-.legend{display:flex;gap:var(--cx-space-4);flex-wrap:wrap;font:400 var(--cx-text-xs) var(--cx-mono);color:var(--cx-fg-dim)}
+.track{display:flex;gap:2px;height:10px;overflow:hidden;background:var(--cx-bg)}
+.legend{display:flex;flex-wrap:wrap;align-items:center;font:400 var(--cx-text-sm) var(--cx-sans);color:var(--cx-fg-dim)}
+/* Márgenes y no `gap`: WeasyPrint no separa con `gap` los hijos de un
+   flex en línea, y en el PDF la leyenda salía pegada. */
+.legend span{display:inline-flex;align-items:center;margin-right:var(--cx-space-4)}
+.legend .cx-fig,.badge .cx-fig{margin-right:7px}
+.legend b{margin-left:6px}
 .legend b{color:var(--cx-fg);font-weight:400;font-variant-numeric:tabular-nums}
-.dot{display:inline-block;width:7px;height:7px;border-radius:2px;margin-right:5px}
 .stats{
   display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));
   gap:var(--cx-rule);background:var(--cx-border);
@@ -55,45 +54,42 @@ h1{margin:var(--cx-space-5) 0 var(--cx-space-3);font:400 var(--cx-text-2xl)/1.25
 .stats dd small{font:400 var(--cx-text-sm) var(--cx-sans);color:var(--cx-fg-dim)}
 
 h2.sec{
-  margin:var(--cx-space-6) 0 var(--cx-space-3);font:600 var(--cx-text-micro) var(--cx-sans);
-  letter-spacing:var(--cx-tracking-label);text-transform:uppercase;color:var(--cx-fg-faint);
-  border-bottom:var(--cx-rule) solid var(--cx-border);padding-bottom:var(--cx-space-2)
+  display:flex;align-items:center;gap:10px;
+  margin:var(--cx-space-6) 0 var(--cx-space-3);font:700 var(--cx-text-lg) var(--cx-sans);
+  border-bottom:var(--cx-rule) solid var(--cx-border-strong);padding-bottom:var(--cx-space-2)
 }
+h2.sec small{font:400 var(--cx-text-sm) var(--cx-sans);color:var(--cx-fg-dim)}
 article.f{
-  border:var(--cx-rule) solid var(--cx-border);border-left:3px solid var(--cx-sev,var(--cx-info));
+  border:var(--cx-rule) solid var(--cx-border);border-radius:var(--cx-radius);
   background:var(--cx-surface);margin-bottom:var(--cx-space-3);break-inside:avoid
 }
 article.f > .top{padding:var(--cx-space-3) var(--cx-space-4)}
 .tags{display:flex;gap:var(--cx-space-2);flex-wrap:wrap;align-items:center;margin-bottom:var(--cx-space-2)}
-.badge{
-  font:700 var(--cx-text-micro) var(--cx-sans);letter-spacing:.11em;text-transform:uppercase;
-  padding:3px 8px;border-radius:3px;background:var(--cx-sev);color:var(--cx-sev-ink)
-}
+.badge{display:inline-flex;align-items:center;font:700 var(--cx-text-sm) var(--cx-sans)}
 .chip{
   font:400 var(--cx-text-xs) var(--cx-mono);color:var(--cx-fg-dim);
-  border:var(--cx-rule) solid var(--cx-border-strong);border-radius:3px;padding:2px 7px
+  border:var(--cx-rule) solid var(--cx-border-strong);border-radius:var(--cx-radius);padding:2px 8px
 }
-.chip.nuevo{color:var(--cx-accent);border-color:var(--cx-accent-dim)}
-article.f h3{margin:0 0 var(--cx-space-2);font:400 var(--cx-text-lg)/1.3 var(--cx-sans);text-wrap:balance}
+.chip.nuevo{color:var(--cx-high-fg);border-color:var(--cx-high)}
+article.f h3{margin:0 0 var(--cx-space-2);font:700 var(--cx-text-lg)/1.28 var(--cx-sans);text-wrap:balance}
 .url{
-  display:block;font:400 var(--cx-text-xs)/1.5 var(--cx-mono);color:var(--cx-accent);
+  display:block;font:400 var(--cx-text-xs)/1.5 var(--cx-mono);color:var(--cx-fg);
   overflow-wrap:anywhere;margin-bottom:var(--cx-space-3)
 }
-article.f p{margin:0 0 var(--cx-space-3);line-height:1.65;max-width:72ch;color:#CBD4E2}
-.fix{border-left:2px solid var(--cx-accent-dim);padding-left:var(--cx-space-3)}
+article.f p{margin:0 0 var(--cx-space-3);line-height:1.65;max-width:72ch;color:var(--cx-fg-body)}
+.fix::before{content:"Cómo se corrige. ";font-weight:700;color:var(--cx-fg)}
 details{border-top:var(--cx-rule) solid var(--cx-border)}
 details summary{
   padding:var(--cx-space-2) var(--cx-space-4);cursor:pointer;
-  font:700 var(--cx-text-micro) var(--cx-sans);letter-spacing:var(--cx-tracking-label);
-  text-transform:uppercase;color:var(--cx-fg-faint)
+  font:700 var(--cx-text-sm) var(--cx-sans);color:var(--cx-fg-dim)
 }
-details summary:hover{color:var(--cx-fg-dim)}
+details summary:hover{color:var(--cx-fg)}
 pre{
   margin:0;padding:var(--cx-space-3) var(--cx-space-4);background:var(--cx-surface-3);
-  overflow-x:auto;font:400 var(--cx-text-xs)/1.7 var(--cx-mono);color:#B9C4D4;white-space:pre-wrap;
+  overflow-x:auto;font:400 var(--cx-text-xs)/1.7 var(--cx-pre);color:var(--cx-code);white-space:pre-wrap;
   word-break:break-word;border-top:var(--cx-rule) solid var(--cx-border)
 }
-pre .hk{color:var(--cx-accent)}
+pre .hk{color:var(--cx-low)}
 footer{
   margin-top:var(--cx-space-6);padding-top:var(--cx-space-4);
   border-top:var(--cx-rule) solid var(--cx-border);
@@ -104,6 +100,17 @@ footer b{color:var(--cx-fg-dim);font-weight:400}
 /* En papel: superficie clara, nada de interacción, y cada hallazgo entero. */
 @media print{
   .sheet{max-width:none;padding:0}
+  /* En papel las cifras van en una fila de anchos iguales: WeasyPrint no
+     resuelve `repeat(auto-fit, minmax())` y las apilaba de dos en dos. */
+  .stats{display:flex}
+  .stats div{flex:1 1 0;border-right:var(--cx-rule) solid var(--cx-border)}
+  .stats div:last-child{border-right:0}
+  header.head{align-items:center}
+  /* WeasyPrint dibuja dos veces el borde de una caja con esquinas
+     redondeadas cuando es un hijo de flex: en papel van rectas. */
+  .chip,.egress,article.f{border-radius:0}
+  .egress,.chip{border:0;padding:0}
+  .chip{margin-right:10px}
   details{border-top:var(--cx-rule) solid var(--cx-border)}
   details summary{display:none}
   details[open] pre, details pre{display:block}
@@ -116,8 +123,8 @@ footer b{color:var(--cx-fg-dim);font-weight:400}
 <body>
 <div class="sheet">
   <header class="head">
-    <span class="brand"><i></i>Crux</span>
-    <span class="ctx"><b>{{ project }}</b> · {{ scan_id }} · perfil {{ profile }} · {{ started }}</span>
+    <span class="brand"><svg aria-hidden="true" viewBox="0 0 26 26" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="13" cy="13" r="8"/><path d="M13 1v8M13 17v8M1 13h8M17 13h8"/></svg>CRUX</span>
+    <span class="ctx"><b>{{ project }}</b>, escaneo {{ scan_id }}, perfil {{ profile }}, {{ started }}</span>
     <span class="egress">{{ egress }}</span>
   </header>
 
@@ -132,7 +139,7 @@ footer b{color:var(--cx-fg-dim);font-weight:400}
     </div>
     <div class="legend">
       {%- for level, count in severity_counts.items() %}
-      <span><i class="dot" style="background:var(--cx-{{ level_token[level] }})"></i>{{ level_label[level] }} <b>{{ count }}</b></span>
+      <span><i class="cx-fig sev-{{ level }}"></i>{{ level_label[level] }} <b>{{ count }}</b></span>
       {%- endfor %}
     </div>
   </div>
@@ -153,19 +160,19 @@ footer b{color:var(--cx-fg-dim);font-weight:400}
   {% for level in order %}
     {% set group = findings|selectattr("severity_label", "equalto", level)|list %}
     {% if group %}
-    <h2 class="sec">{{ level_label[level] }} · {{ group|length }}</h2>
+    <h2 class="sec sev-{{ level }}"><i class="cx-fig sev-{{ level }}"></i>{{ level_label[level] }} <small>{{ group|length }}</small></h2>
       {% for f in group %}
       <article class="f sev-{{ level }}">
         <div class="top">
           <div class="tags">
-            <span class="badge">{{ level_label[level] }}</span>
+            <span class="badge"><i class="cx-fig sev-{{ level }}"></i>{{ level_label[level] }}</span>
             <span class="chip">{{ f.source }}:{{ f.check_id }}</span>
             {% for c in f.cwe %}<span class="chip">{{ c }}</span>{% endfor %}
             {% if f.cvss_score %}<span class="chip">CVSS {{ "%.1f"|format(f.cvss_score) }}</span>{% endif %}
             {% if f.is_new %}<span class="chip nuevo">nuevo</span>{% endif %}
           </div>
           <h3>{{ f.title }}</h3>
-          <code class="url">{{ f.target }}{% if f.param %} · parámetro {{ f.param }}{% endif %}</code>
+          <code class="url">{{ f.target }}{% if f.param %}, parámetro {{ f.param }}{% endif %}</code>
           {% if f.description %}<p>{{ f.description }}</p>{% endif %}
           {% if f.remediation %}<p class="fix">{{ f.remediation }}</p>{% endif %}
         </div>

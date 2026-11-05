@@ -4,6 +4,27 @@
 @import "tailwindcss";
 @import "./tokens.css";
 
+/* B612, empaquetada. Sale del paquete `fonts-b612` del repositorio firmado de
+   la distribución, convertida a woff2; la licencia va junto a los ficheros.
+   Vite la copia a `dist/assets`, que se sirve desde el propio origen: la
+   política de contenido prohíbe cualquier fuente remota, y así debe seguir. */
+@font-face {
+  font-family: "B612"; font-weight: 400; font-style: normal; font-display: swap;
+  src: url("../assets/fonts/B612-Regular.woff2") format("woff2");
+}
+@font-face {
+  font-family: "B612"; font-weight: 700; font-style: normal; font-display: swap;
+  src: url("../assets/fonts/B612-Bold.woff2") format("woff2");
+}
+@font-face {
+  font-family: "B612 Mono"; font-weight: 400; font-style: normal; font-display: swap;
+  src: url("../assets/fonts/B612Mono-Regular.woff2") format("woff2");
+}
+@font-face {
+  font-family: "B612 Mono"; font-weight: 700; font-style: normal; font-display: swap;
+  src: url("../assets/fonts/B612Mono-Bold.woff2") format("woff2");
+}
+
 @theme inline {
   --color-bg: var(--cx-bg);
   --color-surface: var(--cx-surface);
@@ -13,12 +34,17 @@
   --color-line-strong: var(--cx-border-strong);
 
   --color-fg: var(--cx-fg);
+  --color-fg-body: var(--cx-fg-body);
   --color-fg-dim: var(--cx-fg-dim);
   --color-fg-faint: var(--cx-fg-faint);
+  --color-code: var(--cx-code);
 
   --color-accent: var(--cx-accent);
   --color-accent-dim: var(--cx-accent-dim);
   --color-accent-ink: var(--cx-accent-ink);
+
+  --color-ok: var(--cx-ok);
+  --color-ok-dim: var(--cx-ok-dim);
 
   --color-crit: var(--cx-crit);
   --color-high: var(--cx-high);
@@ -26,9 +52,12 @@
   --color-low: var(--cx-low);
   --color-info: var(--cx-info);
   --color-sev-ink: var(--cx-sev-ink);
+  --color-crit-fg: var(--cx-crit-fg);
+  --color-high-fg: var(--cx-high-fg);
 
   --font-sans: var(--cx-sans);
   --font-mono: var(--cx-mono);
+  --font-pre: var(--cx-pre);
 
   --radius-cx: var(--cx-radius);
 }
@@ -39,21 +68,45 @@ body {
   margin: 0;
   background: var(--cx-bg);
   color: var(--cx-fg);
-  font: 400 var(--cx-text-base) / 1.5 var(--cx-sans);
+  font: 400 var(--cx-text-base) / 1.45 var(--cx-sans);
   -webkit-font-smoothing: antialiased;
 }
 
-/* Rótulo en versales: aparece lo bastante como para merecer su propia clase. */
+/* Rótulo de sección o de campo. Negrita y caja normal: las versales
+   espaciadas se leen peor y B612 no las necesita para distinguirse. */
 @utility lbl {
-  font-weight: 600;
-  font-size: var(--cx-text-micro);
-  letter-spacing: var(--cx-tracking-label);
-  text-transform: uppercase;
-  color: var(--cx-fg-faint);
+  font-weight: 700;
+  font-size: var(--cx-text-sm);
+  color: var(--cx-fg-dim);
 }
 
-:focus-visible { outline: 2px solid var(--cx-accent); outline-offset: 2px; }
+/* Un aviso de cabina. Apagado por defecto; se enciende con un modificador. */
+@utility aviso {
+  box-sizing: border-box;
+  border: 1.5px solid var(--cx-border);
+  border-radius: var(--cx-radius);
+  color: var(--cx-fg-faint);
+}
+@utility aviso-rojo {
+  border-color: var(--cx-crit);
+  background: var(--cx-crit-tint);
+  color: var(--cx-crit-fg);
+}
+@utility aviso-ambar {
+  border-color: var(--cx-high);
+  background: var(--cx-high-tint);
+  color: var(--cx-high-fg);
+}
+
+:focus-visible { outline: 2px solid var(--cx-fg); outline-offset: 2px; }
 ::selection { background: var(--cx-accent-dim); color: #fff; }
 
 /* Barras de desplazamiento acordes con las superficies, no el gris del sistema. */
 * { scrollbar-width: thin; scrollbar-color: var(--cx-border-strong) transparent; }
+
+/* El barrido del radar es el único movimiento que no responde a una acción.
+   Quien ha pedido menos movimiento no lo ve girar. */
+@keyframes cx-giro { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }
+@media (prefers-reduced-motion: reduce) {
+  .cx-barrido { animation: none !important; }
+}

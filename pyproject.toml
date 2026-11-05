@@ -43,7 +43,7 @@ crux = "crux.cli.main:cli"
 include = ["crux*"]
 
 [tool.setuptools.package-data]
-crux = ["core/report/templates/*", "web/dist/**/*"]
+crux = ["core/report/templates/*", "core/report/*.css", "core/report/fonts/*", "web/dist/**/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

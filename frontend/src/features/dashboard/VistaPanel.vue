@@ -9,8 +9,9 @@
  * empezar para cerrar muchos de golpe, la tercera qué se está quedando atrás.
  *
  * Reglas de dibujo que se siguen aquí y por qué:
- * — Las cifras de titular son fichas, no gráficas: un número no mejora por
- *   dibujarlo.
+ * — Arriba van el radar y los avisos, que responden sin leer: ¿hay algo
+ *   grave?, ¿dónde?, ¿queda algo por mirar? El detalle va debajo.
+ * — Cabina oscura: un aviso apagado significa que no hay nada que atender.
  * — La tendencia son barras apiladas y no un área, porque los escaneos son
  *   sucesos discretos, no una serie continua.
  * — El color de severidad es refuerzo redundante: cada segmento lleva su
@@ -24,6 +25,7 @@ import { useRouter } from 'vue-router'
 import { api } from '@/api/client'
 import { useSesion, ORDEN_SEVERIDAD } from '@/stores/sesion'
 import Severidad from '@/components/Severidad.vue'
+import RadarDeHallazgos from './RadarDeHallazgos.vue'
 import type { Metricas, Severidad as NivelSeveridad } from '@/api/types'
 
 const sesion = useSesion()
@@ -40,6 +42,9 @@ const ESTADO_ES: Record<string, string> = {
   new: 'sin triar', confirmed: 'confirmado', false_positive: 'falso positivo',
   fixed: 'corregido', accepted_risk: 'riesgo aceptado',
 }
+const PERFIL_ES: Record<string, string> = {
+  passive: 'pasivo', 'safe-active': 'activo seguro', aggressive: 'agresivo',
+}
 const TAREA_ES: Record<string, string> = {
   done: 'hecha', failed: 'falló', skipped: 'omitida',
   running: 'en curso', pending: 'pendiente',
@@ -52,26 +57,58 @@ function leer(nombre: string) {
 const resumen = computed(() => datos.value?.resumen ?? null)
 const ultimo = computed(() => resumen.value?.ultimo ?? null)
 
+const RANGO: Record<NivelSeveridad, number> = {
+  critical: 4, high: 3, medium: 2, low: 1, info: 0,
+}
+
 /**
- * Las cinco cifras del titular, en orden de lo que se hace con ellas:
- * cuánto queda por mirar, cuánto sigue abierto, cuánto es grave.
+ * Lo abierto en el escaneo que se está mirando: lo que nadie ha descartado.
+ * Es lo que dibuja el radar. Un falso positivo o un riesgo aceptado ya tienen
+ * dueño y no deben seguir pidiendo atención desde la primera pantalla.
  */
-const fichas = computed(() => {
+const abiertos = computed(() =>
+  sesion.hallazgos.filter((h) => h.status === 'new' || h.status === 'confirmed'))
+
+const descartados = computed(() => sesion.hallazgos.length - abiertos.value.length)
+
+/** Por dónde empezar: los cuatro más graves de lo abierto. */
+const decisivos = computed(() =>
+  [...abiertos.value].sort((a, b) => RANGO[b.severity] - RANGO[a.severity]).slice(0, 4))
+
+const sinTriar = computed(() => sesion.hallazgos.filter((h) => h.status === 'new').length)
+
+/**
+ * Los avisos, con la regla de la cabina oscura: apagado significa que ahí no
+ * hay nada que atender. Por eso un cero es gris y no verde —el verde también
+ * llama la vista—, y por eso solo se encienden en rojo o en ámbar.
+ *
+ * Un `null` es otra cosa: no es «cero», es «no se puede saber», y se pinta
+ * con una raya. Pasa con todo lo que compara con el escaneo anterior cuando
+ * no hay escaneo anterior.
+ */
+const avisos = computed(() => {
   const r = resumen.value
-  if (!r || !r.ultimo) return []
+  const u = ultimo.value
+  if (!r || !u) return []
   const c = datos.value?.cambio
+  const sinComparar = 'no hay un escaneo anterior con el que comparar'
   return [
-    { k: 'Sin triar', v: r.pendientes ?? 0, acento: (r.pendientes ?? 0) > 0,
-      pie: 'nadie los ha mirado todavía' },
-    { k: 'Abiertos', v: r.abiertos ?? 0,
-      pie: 'nuevos y confirmados, sin descartar' },
-    { k: 'Críticos y altos', v: r.graves ?? 0, grave: (r.graves ?? 0) > 0,
-      pie: 'en el último escaneo' },
-    { k: 'Nuevos', v: c?.nuevos ?? null, delta: true,
-      pie: c ? `frente al escaneo #${c.antes}` : 'no hay con qué comparar' },
-    { k: 'Escaneos', v: r.escaneos, pie: 'en este proyecto' },
+    { k: 'Críticos y altos', v: r.graves ?? 0, tono: 'rojo' as const,
+      ir: () => filtrar({ severidad: ['critical', 'high'] }) },
+    { k: 'Sin triar', v: r.pendientes ?? 0, tono: 'ambar' as const,
+      ir: () => filtrar({ estado: ['new'] }) },
+    { k: 'Nuevos', v: c?.nuevos ?? null, tono: 'ambar' as const, pie: c ? '' : sinComparar },
+    { k: 'Empeoran', v: c?.empeoran ?? null, tono: 'rojo' as const, pie: c ? '' : sinComparar },
+    { k: 'Sin comprobar', v: c?.sin_comprobar ?? null, tono: 'ambar' as const,
+      pie: c ? '' : sinComparar },
+    { k: 'Sin ejecutar', v: u.tareas_fallidas + u.tareas_omitidas,
+      tono: 'ambar' as const, pie: 'tareas del escaneo que fallaron o se omitieron' },
+    { k: 'Perdidos', v: conteo.value?.descuadre ?? 0, tono: 'rojo' as const,
+      pie: 'hallazgos que desaparecieron entre fases sin explicación' },
   ]
 })
+// Los nombres van escritos enteros: Tailwind solo genera las clases que ve.
+const ENCENDIDO = { rojo: 'aviso-rojo', ambar: 'aviso-ambar' }
 
 const hayCambio = computed(() => datos.value?.cambio != null)
 
@@ -93,6 +130,20 @@ function fecha(iso: string | null | undefined) {
   return new Date(iso).toLocaleString('es', {
     day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
   })
+}
+
+/** Lleva al triaje con unas facetas ya puestas. */
+function filtrar(f: { severidad?: string[]; estado?: string[] }) {
+  sesion.limpiarFiltros()
+  if (f.severidad) sesion.filtroSeveridad = new Set(f.severidad)
+  if (f.estado) sesion.filtroEstado = new Set(f.estado)
+  router.push('/hallazgos')
+}
+
+function abrirHallazgo(id: number) {
+  sesion.limpiarFiltros()
+  sesion.seleccionado = id
+  router.push('/hallazgos')
 }
 
 /** Lleva al triaje ya filtrado por lo que se acaba de pulsar. */
@@ -134,7 +185,7 @@ async function pintar() {
     },
     tooltip: {
       trigger: 'axis',
-      axisPointer: { type: 'shadow', shadowStyle: { color: 'rgba(255,255,255,.04)' } },
+      axisPointer: { type: 'shadow', shadowStyle: { color: 'rgba(232,241,255,.05)' } },
       backgroundColor: leer('--cx-surface-2'),
       borderColor: leer('--cx-border-strong'),
       textStyle: { color: leer('--cx-fg'), fontSize: 12, fontFamily: leer('--cx-mono') },
@@ -194,55 +245,131 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="overflow-y-auto">
-    <div class="max-w-[1080px] mx-auto px-5 py-8 flex flex-col gap-8">
-      <div class="flex items-baseline gap-4 flex-wrap">
-        <h1 class="m-0 text-[21px] font-normal">
-          {{ sesion.proyectoActual?.name ?? 'Proyecto' }}
-        </h1>
-        <p v-if="ultimo" class="m-0 font-mono text-[12px] text-fg-faint">
-          último: #{{ ultimo.id }} · {{ ultimo.profile }} ·
-          {{ fecha(ultimo.fecha) }} · {{ duracion(ultimo.duracion) }}
-        </p>
+    <div class="max-w-[1360px] mx-auto px-[clamp(16px,3vw,44px)] py-7 flex flex-col gap-11">
+
+      <!-- ── Lo que se ve sin leer ──────────────────────────────────────── -->
+      <div class="flex flex-wrap items-start gap-x-[52px] gap-y-8">
+        <RadarDeHallazgos
+          class="flex-[3_1_500px] max-w-[760px]"
+          :hallazgos="abiertos"
+          @abrir="abrirHallazgo"
+        />
+
+        <div class="flex-[2_1_380px] min-w-0 flex flex-col gap-[26px]">
+          <div class="flex flex-col gap-[6px]">
+            <h1 class="m-0 text-[clamp(30px,3.2vw,44px)] font-bold leading-[1.08]">
+              {{ abiertos.length }}
+              {{ abiertos.length === 1 ? 'hallazgo abierto' : 'hallazgos abiertos' }}
+            </h1>
+            <p v-if="sesion.escaneo" class="m-0 text-fg-dim">
+              {{ sesion.proyectoActual?.name }}. Escaneo #{{ sesion.escaneo.id }},
+              perfil {{ PERFIL_ES[sesion.escaneo.profile] ?? sesion.escaneo.profile }}, {{ fecha(sesion.escaneo.started_at) }},
+              {{ duracion(sesion.escaneo.duracion) }}.
+              <template v-if="descartados">
+                Hay {{ descartados }} más ya {{ descartados === 1 ? 'descartado' : 'descartados' }}
+                en el triaje.
+              </template>
+            </p>
+            <p v-else class="m-0 text-fg-dim">
+              Todavía no hay ningún escaneo. Lanza el primero para ver aquí lo
+              que encuentre.
+            </p>
+          </div>
+
+          <section v-if="avisos.length" aria-label="Avisos" class="flex flex-col gap-2">
+            <div class="grid gap-2"
+                 style="grid-template-columns: repeat(auto-fit, minmax(min(118px, 100%), 1fr))">
+              <component
+                :is="a.ir && a.v ? 'button' : 'div'"
+                v-for="a in avisos"
+                :key="a.k"
+                class="aviso min-h-[58px] px-3 py-2 flex items-center justify-between
+                       gap-[10px] text-left"
+                :class="[a.v ? ENCENDIDO[a.tono] + ' font-bold' : '',
+                         a.ir && a.v ? 'hover:brightness-125' : '']"
+                :title="a.pie || undefined"
+                @click="a.ir && a.v ? a.ir() : undefined"
+              >
+                <span>{{ a.k }}</span>
+                <span class="font-mono text-[22px] leading-none tabular-nums"
+                      :class="a.v ? 'text-fg' : ''">{{ a.v ?? '—' }}</span>
+              </component>
+            </div>
+            <p class="m-0 text-[13px] text-fg-dim">
+              Un aviso apagado significa que ahí no hay nada que atender.
+              <template v-if="ultimo && sesion.escaneo && ultimo.id !== sesion.escaneo.id">
+                Los avisos son del último escaneo del proyecto, el #{{ ultimo.id }}.
+              </template>
+            </p>
+          </section>
+
+          <section class="flex flex-col gap-[10px]">
+            <h2 class="m-0 text-[17px] font-bold">Lo que decide</h2>
+            <p v-if="!decisivos.length" class="m-0 text-fg-dim">
+              Nada abierto. No hay por dónde empezar porque no queda nada.
+            </p>
+            <div v-else class="flex flex-col border-t border-line">
+              <button
+                v-for="(h, i) in decisivos"
+                :key="h.id"
+                class="min-h-[52px] py-2 flex items-center gap-[14px] text-left
+                       border-b border-line hover:bg-surface"
+                :class="i === 0 ? 'font-bold' : ''"
+                @click="abrirHallazgo(h.id)"
+              >
+                <Severidad :nivel="h.severity" como="figura" />
+                <span class="flex-1 min-w-0">{{ h.title }}</span>
+                <span class="font-mono font-normal text-[12px] text-fg-dim truncate max-w-[38%]">
+                  {{ h.target.replace(/^https?:\/\/[^/]+/, '') || '/' }}
+                </span>
+              </button>
+            </div>
+          </section>
+
+          <div class="flex flex-wrap gap-3">
+            <button
+              v-if="sinTriar"
+              class="min-h-[48px] px-[22px] bg-accent text-accent-ink font-bold rounded-cx
+                     hover:brightness-110"
+              @click="filtrar({ estado: ['new'] })"
+            >{{ sinTriar === 1 ? 'Triar el pendiente' : `Triar los ${sinTriar} pendientes` }}</button>
+            <button
+              class="min-h-[48px] px-[22px] font-bold rounded-cx border-[1.5px]"
+              :class="sinTriar ? 'border-fg-dim text-fg hover:border-fg'
+                               : 'bg-accent border-accent text-accent-ink hover:brightness-110'"
+              @click="router.push('/escaneos')"
+            >Nuevo escaneo</button>
+          </div>
+        </div>
       </div>
 
-      <!-- Cifras de titular: fichas, no gráficas. -->
-      <dl class="grid gap-px bg-line border border-line"
-          style="grid-template-columns: repeat(auto-fit, minmax(150px, 1fr))">
-        <div v-for="f in fichas" :key="f.k" class="bg-surface px-4 py-3 min-w-0">
-          <dt class="lbl mb-[5px]">{{ f.k }}</dt>
-          <dd class="m-0 font-mono text-[27px] leading-none tabular-nums"
-              :class="f.grave ? 'text-crit' : f.acento ? 'text-accent' : ''">
-            {{ f.v ?? '—' }}
-          </dd>
-          <p class="m-0 mt-[6px] text-[11px] text-fg-faint leading-tight">{{ f.pie }}</p>
-        </div>
-      </dl>
+      <!-- ── El detalle ─────────────────────────────────────────────────── -->
 
       <!-- Lo que cambió: la sección que de verdad dice si vas ganando. -->
       <section v-if="hayCambio && datos?.cambio" class="flex flex-col gap-3">
         <div class="flex items-baseline gap-3 flex-wrap">
-          <h2 class="lbl m-0">
+          <h2 class="m-0 text-[17px] font-bold">
             Desde el escaneo #{{ datos.cambio.antes }}
           </h2>
-          <span v-if="datos.cambio.hay_regresion" class="text-[12px] text-high">
-            hay regresión: algo nuevo o algo que empeora
+          <span v-if="datos.cambio.hay_regresion" class="text-high-fg">
+            Hay regresión: algo nuevo o algo que empeora.
           </span>
         </div>
-        <div class="grid gap-px bg-line border border-line"
-             style="grid-template-columns: repeat(auto-fit, minmax(128px, 1fr))">
+        <dl class="m-0 grid gap-px bg-line border border-line rounded-cx overflow-hidden"
+            style="grid-template-columns: repeat(auto-fit, minmax(128px, 1fr))">
           <div v-for="c in [
-                 { k: 'Nuevos', v: datos.cambio.nuevos, tono: 'text-high' },
-                 { k: 'Corregidos', v: datos.cambio.corregidos, tono: 'text-accent' },
-                 { k: 'Persisten', v: datos.cambio.persistentes, tono: '' },
-                 { k: 'Empeoran', v: datos.cambio.empeoran, tono: 'text-crit' },
-                 { k: 'Sin comprobar', v: datos.cambio.sin_comprobar, tono: 'text-med' },
-               ]" :key="c.k" class="bg-surface px-4 py-3">
-            <dt class="lbl mb-[5px]">{{ c.k }}</dt>
-            <dd class="m-0 font-mono text-[20px] leading-none tabular-nums"
+                 { k: 'Nuevos', v: datos.cambio.nuevos, tono: 'text-high-fg' },
+                 { k: 'Corregidos', v: datos.cambio.corregidos, tono: 'text-ok' },
+                 { k: 'Persisten', v: datos.cambio.persistentes, tono: 'text-fg' },
+                 { k: 'Empeoran', v: datos.cambio.empeoran, tono: 'text-crit-fg' },
+                 { k: 'Sin comprobar', v: datos.cambio.sin_comprobar, tono: 'text-high-fg' },
+               ]" :key="c.k" class="bg-bg px-4 py-3">
+            <dt class="lbl mb-[6px]">{{ c.k }}</dt>
+            <dd class="m-0 font-mono text-[22px] leading-none tabular-nums"
                 :class="c.v ? c.tono : 'text-fg-faint'">{{ c.v }}</dd>
           </div>
-        </div>
-        <p v-if="datos.cambio.sin_comprobar" class="m-0 text-[12px] text-med">
+        </dl>
+        <p v-if="datos.cambio.sin_comprobar" class="m-0 text-high-fg max-w-[80ch]">
           «Sin comprobar» no es «corregido»: esos hallazgos desaparecieron sin
           que esta vez se buscaran —otro perfil, una herramienta ausente, un
           adaptador que falló—, así que nadie puede decir si siguen ahí.
@@ -251,22 +378,22 @@ onBeforeUnmount(() => {
 
       <section class="flex flex-col gap-3">
         <div class="flex items-center gap-3">
-          <h2 class="lbl m-0">Severidad por escaneo</h2>
+          <h2 class="m-0 text-[17px] font-bold">Severidad por escaneo</h2>
           <button
-            class="ml-auto text-[12px] text-accent hover:underline"
+            class="ml-auto min-h-[36px] px-3 text-accent hover:text-fg"
             @click="comoTabla = !comoTabla"
-          >{{ comoTabla ? 'ver gráfica' : 'ver tabla' }}</button>
+          >{{ comoTabla ? 'Ver la gráfica' : 'Ver la tabla' }}</button>
         </div>
 
         <div v-show="!comoTabla" ref="lienzo"
              class="h-[300px] w-full border border-line bg-surface rounded-cx" />
 
-        <table v-if="comoTabla" class="w-full border-collapse text-[13px]">
+        <table v-if="comoTabla" class="w-full border-collapse">
           <thead>
             <tr>
-              <th class="lbl text-left px-3 py-2 border-b border-line">Escaneo</th>
+              <th class="lbl text-left px-3 py-2 border-b border-line-strong">Escaneo</th>
               <th v-for="n in ORDEN_SEVERIDAD" :key="n"
-                  class="lbl text-right px-3 py-2 border-b border-line">{{ SEV_ES[n] }}</th>
+                  class="lbl text-right px-3 py-2 border-b border-line-strong">{{ SEV_ES[n] }}</th>
             </tr>
           </thead>
           <tbody>
@@ -283,117 +410,129 @@ onBeforeUnmount(() => {
       </section>
 
       <!-- Dos columnas de listas: por dónde empezar, y dónde se concentra. -->
-      <div class="grid gap-8" style="grid-template-columns: repeat(auto-fit, minmax(330px, 1fr))">
+      <div class="grid gap-x-12 gap-y-10"
+           style="grid-template-columns: repeat(auto-fit, minmax(min(360px, 100%), 1fr))">
         <section v-if="datos?.top_checks.length" class="flex flex-col gap-3">
-          <div class="flex items-baseline gap-3 flex-wrap">
-            <h2 class="lbl m-0">Lo que más se repite</h2>
-            <span class="text-[11.5px] text-fg-faint">suele ser un arreglo que cierra varios</span>
+          <div class="flex flex-col gap-[2px]">
+            <h2 class="m-0 text-[17px] font-bold">Lo que más se repite</h2>
+            <span class="text-fg-dim">Suele ser un arreglo que cierra varios de golpe.</span>
           </div>
-          <button
-            v-for="c in datos.top_checks"
-            :key="c.source + c.check_id"
-            class="flex items-center gap-3 text-left w-full px-3 py-[9px]
-                   bg-surface border border-line rounded-cx hover:border-line-strong"
-            @click="irAHallazgos(c.check_id)"
-          >
-            <Severidad :nivel="c.severidad" como="punto" />
-            <span class="flex-1 min-w-0">
-              <span class="block text-[13px] truncate">{{ c.titulo }}</span>
-              <span class="block font-mono text-[11px] text-fg-faint truncate">
-                {{ c.source }}:{{ c.check_id }}
+          <div class="flex flex-col border-t border-line">
+            <button
+              v-for="c in datos.top_checks"
+              :key="c.source + c.check_id"
+              class="min-h-[52px] py-2 flex items-center gap-[14px] text-left w-full
+                     border-b border-line hover:bg-surface"
+              @click="irAHallazgos(c.check_id)"
+            >
+              <Severidad :nivel="c.severidad" como="figura" />
+              <span class="flex-1 min-w-0">
+                <span class="block truncate">{{ c.titulo }}</span>
+                <span class="block font-mono text-[12px] text-fg-dim truncate">
+                  {{ c.source }}:{{ c.check_id }}
+                </span>
               </span>
-            </span>
-            <span class="font-mono text-[17px] tabular-nums shrink-0">×{{ c.total }}</span>
-          </button>
+              <span class="font-mono text-[18px] tabular-nums shrink-0">{{ c.total }} veces</span>
+            </button>
+          </div>
         </section>
 
         <section v-if="datos?.top_objetivos.length" class="flex flex-col gap-3">
-          <h2 class="lbl m-0">Dónde se concentra</h2>
-          <div
-            v-for="o in datos.top_objetivos"
-            :key="o.objetivo"
-            class="flex items-center gap-3 px-3 py-[9px]
-                   bg-surface border border-line rounded-cx"
-          >
-            <Severidad :nivel="o.peor" como="punto" />
-            <span class="flex-1 min-w-0 font-mono text-[12.5px] truncate">{{ o.objetivo }}</span>
-            <span class="text-[11px] text-fg-faint shrink-0">{{ o.rutas }} ruta(s)</span>
-            <span class="font-mono text-[17px] tabular-nums shrink-0">{{ o.total }}</span>
+          <h2 class="m-0 text-[17px] font-bold">Dónde se concentra</h2>
+          <div class="flex flex-col border-t border-line">
+            <div
+              v-for="o in datos.top_objetivos"
+              :key="o.objetivo"
+              class="min-h-[52px] py-2 flex items-center gap-[14px] border-b border-line"
+            >
+              <Severidad :nivel="o.peor" como="figura" />
+              <span class="flex-1 min-w-0 font-mono text-[13px] truncate">{{ o.objetivo }}</span>
+              <span class="text-[13px] text-fg-dim shrink-0">
+                {{ o.rutas }} {{ o.rutas === 1 ? 'ruta' : 'rutas' }}
+              </span>
+              <span class="font-mono text-[18px] tabular-nums shrink-0 w-[3ch] text-right">
+                {{ o.total }}
+              </span>
+            </div>
           </div>
         </section>
 
         <section v-if="datos && Object.keys(datos.por_herramienta).length"
                  class="flex flex-col gap-3">
-          <div class="flex items-baseline gap-3 flex-wrap">
-            <h2 class="lbl m-0">Quién lo encontró</h2>
-            <span class="text-[11.5px] text-fg-faint">en el último escaneo</span>
+          <div class="flex flex-col gap-[2px]">
+            <h2 class="m-0 text-[17px] font-bold">Quién lo encontró</h2>
+            <span class="text-fg-dim">En el último escaneo.</span>
           </div>
-          <div class="flex flex-col gap-[5px]">
+          <div class="flex flex-col gap-[8px]">
             <div v-for="(n, herramienta) in datos.por_herramienta" :key="herramienta"
                  class="flex items-center gap-3">
-              <span class="w-[92px] shrink-0 font-mono text-[12px] text-fg-dim truncate">
+              <span class="w-[92px] shrink-0 font-mono text-[13px] text-fg-dim truncate">
                 {{ herramienta }}
               </span>
-              <span class="flex-1 h-[10px] bg-surface-2 rounded-[2px] overflow-hidden">
-                <span class="block h-full bg-accent-dim"
+              <span class="flex-1 h-[10px] bg-surface-2 overflow-hidden">
+                <!-- Barra neutra a propósito: aquí el color no significa nada,
+                     y en este sistema un color que no significa nada no va. -->
+                <span class="block h-full bg-fg-dim"
                       :style="{ width: `${(n / Math.max(...Object.values(datos.por_herramienta))) * 100}%` }" />
               </span>
-              <span class="w-[32px] text-right font-mono text-[12px] tabular-nums">{{ n }}</span>
+              <span class="w-[32px] text-right font-mono text-[13px] tabular-nums">{{ n }}</span>
             </div>
           </div>
         </section>
 
         <section v-if="datos?.antiguedad.mas_viejos.length" class="flex flex-col gap-3">
-          <div class="flex items-baseline gap-3 flex-wrap">
-            <h2 class="lbl m-0">Lo que lleva más tiempo abierto</h2>
-          </div>
-          <div class="flex gap-4 flex-wrap font-mono text-[11.5px] text-fg-dim">
+          <h2 class="m-0 text-[17px] font-bold">Lo que lleva más tiempo abierto</h2>
+          <div class="flex gap-x-5 gap-y-1 flex-wrap font-mono text-[13px] text-fg-dim">
             <span v-for="(n, tramo) in datos.antiguedad.tramos" :key="tramo">
               {{ tramo }} <b class="text-fg font-normal">{{ n }}</b>
             </span>
           </div>
-          <button
-            v-for="v in datos.antiguedad.mas_viejos"
-            :key="v.fingerprint"
-            class="flex items-center gap-3 text-left w-full px-3 py-[8px]
-                   bg-surface border border-line rounded-cx hover:border-line-strong"
-            @click="irAHallazgos(v.titulo)"
-          >
-            <Severidad :nivel="v.severidad" como="punto" />
-            <span class="flex-1 min-w-0">
-              <span class="block text-[12.5px] truncate">{{ v.titulo }}</span>
-              <span class="block font-mono text-[11px] text-fg-faint truncate">
-                {{ v.objetivo }}
+          <div class="flex flex-col border-t border-line">
+            <button
+              v-for="v in datos.antiguedad.mas_viejos"
+              :key="v.fingerprint"
+              class="min-h-[52px] py-2 flex items-center gap-[14px] text-left w-full
+                     border-b border-line hover:bg-surface"
+              @click="irAHallazgos(v.titulo)"
+            >
+              <Severidad :nivel="v.severidad" como="figura" />
+              <span class="flex-1 min-w-0">
+                <span class="block truncate">{{ v.titulo }}</span>
+                <span class="block font-mono text-[12px] text-fg-dim truncate">
+                  {{ v.objetivo }}
+                </span>
               </span>
-            </span>
-            <span class="shrink-0 text-right">
-              <span class="block font-mono text-[14px] tabular-nums">{{ v.dias }} d</span>
-              <span class="block text-[10.5px] text-fg-faint">{{ ESTADO_ES[v.estado] }}</span>
-            </span>
-          </button>
+              <span class="shrink-0 text-right">
+                <span class="block font-mono text-[15px] tabular-nums">{{ v.dias }} d</span>
+                <span class="block text-[12px] text-fg-dim">{{ ESTADO_ES[v.estado] }}</span>
+              </span>
+            </button>
+          </div>
         </section>
       </div>
 
       <section v-if="datos" class="flex flex-col gap-3">
-        <h2 class="lbl m-0">Estado del triaje</h2>
+        <h2 class="m-0 text-[17px] font-bold">Estado del triaje</h2>
+        <!-- Grises, no colores: el triaje no es severidad, y pintar
+             «confirmado» de rojo lo confundiría con un crítico. Solo
+             «corregido» lleva verde, que aquí siempre significa eso. -->
         <div v-if="Object.keys(datos.triaje).length"
-             class="flex h-[26px] rounded-[2px] overflow-hidden border border-line">
+             class="flex h-[28px] rounded-cx overflow-hidden border border-line-strong gap-px bg-bg">
           <span
             v-for="(n, estado) in datos.triaje"
             :key="estado"
-            class="grid place-items-center font-mono text-[11px] tabular-nums"
+            class="grid place-items-center font-mono text-[12px] tabular-nums"
             :style="{
               flex: n,
-              background: estado === 'false_positive' ? 'var(--cx-surface-3)'
-                : estado === 'accepted_risk' ? 'var(--cx-med)'
-                : estado === 'confirmed' ? 'var(--cx-crit)'
-                : estado === 'fixed' ? 'var(--cx-accent-dim)' : 'var(--cx-surface-2)',
-              color: ['accepted_risk', 'confirmed'].includes(estado as string)
-                ? 'var(--cx-sev-ink)' : 'var(--cx-fg-dim)',
+              background: estado === 'fixed' ? 'var(--cx-ok-dim)'
+                : estado === 'confirmed' ? 'var(--cx-fg-dim)'
+                : estado === 'new' ? 'var(--cx-border-strong)'
+                : 'var(--cx-surface-2)',
+              color: estado === 'confirmed' ? 'var(--cx-sev-ink)' : 'var(--cx-fg)',
             }"
           >{{ n }}</span>
         </div>
-        <div class="flex gap-4 flex-wrap font-mono text-[11.5px] text-fg-dim">
+        <div class="flex gap-x-5 gap-y-1 flex-wrap font-mono text-[13px] text-fg-dim">
           <span v-for="(n, estado) in datos.triaje" :key="estado">
             {{ ESTADO_ES[estado as string] ?? estado }} <b class="text-fg font-normal">{{ n }}</b>
           </span>
@@ -403,38 +542,35 @@ onBeforeUnmount(() => {
       <!-- Qué se ejecutó y qué no. Sin esto, un adaptador que falló se lee
            como «no había nada que encontrar». -->
       <section v-if="datos?.cobertura.tareas.length" class="flex flex-col gap-3">
-        <div class="flex items-baseline gap-3 flex-wrap">
-          <h2 class="lbl m-0">Qué se comprobó</h2>
-          <span class="text-[11.5px] text-fg-faint">
-            en el escaneo #{{ ultimo?.id }}
-          </span>
+        <div class="flex flex-col gap-[2px]">
+          <h2 class="m-0 text-[17px] font-bold">Qué se comprobó</h2>
+          <span class="text-fg-dim">En el escaneo #{{ ultimo?.id }}.</span>
         </div>
         <div class="flex gap-2 flex-wrap">
           <span
             v-for="t in datos.cobertura.tareas"
             :key="t.name"
-            class="font-mono text-[11.5px] px-2 py-[3px] rounded-[3px] border"
-            :class="t.status === 'failed' ? 'border-crit text-crit'
-                  : t.status === 'skipped' ? 'border-med text-med'
-                  : 'border-line text-fg-dim'"
+            class="aviso font-mono text-[12px] px-[10px] py-[5px]"
+            :class="t.status === 'failed' ? 'aviso-rojo'
+                  : t.status === 'skipped' ? 'aviso-ambar' : ''"
             :title="t.error ?? ''"
-          >{{ t.name }} · {{ TAREA_ES[t.status] ?? t.status }}</span>
+          >{{ t.name }}, {{ TAREA_ES[t.status] ?? t.status }}</span>
         </div>
         <!-- De cuántos hallazgos se partió y en qué se quedaron. Reducir
              por huella o por absorción es correcto; lo que no puede ser es
              que la diferencia no se pueda explicar. -->
-        <p v-if="conteo" class="m-0 font-mono text-[11.5px] text-fg-dim">
-          {{ conteo.producidos }} producidos ·
-          {{ conteo.colapsados_por_huella }} colapsados por huella ·
-          {{ conteo.absorbidos_por_otro_mejor }} absorbidos ·
+        <p v-if="conteo" class="m-0 font-mono text-[13px] text-fg-dim">
+          {{ conteo.producidos }} producidos,
+          {{ conteo.colapsados_por_huella }} colapsados por huella,
+          {{ conteo.absorbidos_por_otro_mejor }} absorbidos,
           <b class="text-fg font-normal">{{ conteo.guardados }} guardados</b>
         </p>
-        <p v-if="conteo?.descuadre" class="m-0 text-[12px] text-crit">
+        <p v-if="conteo?.descuadre" class="m-0 text-crit-fg max-w-[80ch]">
           Las cuentas no cuadran por {{ conteo.descuadre }}: este escaneo
           perdió hallazgos entre fases y no se sabe cuáles. Repítelo y no des
           el informe por completo.
         </p>
-        <p v-if="tareasConPega.length" class="m-0 text-[12px] text-med">
+        <p v-if="tareasConPega.length" class="m-0 text-high-fg max-w-[80ch]">
           Lo que no se ejecutó no encontró nada porque no miró, no porque no
           hubiera. Un hallazgo que desaparezca por aquí no está corregido.
         </p>
