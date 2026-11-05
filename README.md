@@ -23,13 +23,18 @@ crux web                         interfaz en 127.0.0.1:8777
 ### En un equipo con red
 
 ```bash
-git clone <este-repo> && cd Audit-Tools
+git clone https://github.com/dotMuny/Crux.git && cd Crux
 bash install/bootstrap.sh
 ```
 
 Descarga las plantillas de nuclei, las reglas de semgrep fijadas a un commit y
 la base de vulnerabilidades de trivy. **Es el único momento en que se usa
 internet.**
+
+Al terminar deja la orden `crux` enlazada en `~/.local/bin`, así que se invoca
+sin activar el entorno virtual. Si acabas de crear ese directorio, no estará en
+tu `PATH` hasta que abras una sesión nueva; el instalador te avisa si es el
+caso.
 
 ### En un equipo sin red
 
@@ -373,7 +378,7 @@ Algunas que conviene leer antes de tocar nada:
 ```bash
 python3 -m venv --system-site-packages .venv
 .venv/bin/pip install -e '.[dev]'
-.venv/bin/python -m pytest tests/ -q          # 185 tests, ~2,5 min
+.venv/bin/python -m pytest tests/ -q          # 240 tests, ~5 min
 ```
 
 La suite lanza escaneos reales contra una aplicación deliberadamente vulnerable

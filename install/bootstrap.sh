@@ -99,6 +99,30 @@ else
   echo "       cd $RAIZ/frontend && corepack pnpm install && corepack pnpm build"
 fi
 
-# ── 7. Comprobación final ───────────────────────────────────────────────────
+# ── 7. La orden en el PATH ──────────────────────────────────────────────────
+# El lanzador que genera pip vive dentro del entorno virtual, así que sin esto
+# la orden sólo existe para quien lo active: en una terminal normal, `crux web`
+# responde «command not found». Un enlace en ~/.local/bin —donde Debian espera
+# los binarios del usuario— la deja disponible sin tocar el sistema ni pedir
+# sudo. No se escribe en /usr/local/bin a propósito: eso sí es del sistema.
+paso "La orden crux"
+BIN="$HOME/.local/bin"
+mkdir -p "$BIN"
+if [ -e "$BIN/crux" ] &&
+   [ "$(readlink -f "$BIN/crux")" != "$(readlink -f "$RAIZ/.venv/bin/crux")" ]; then
+  aviso "$BIN/crux ya existe y apunta a otro sitio: se deja como está"
+  aviso "usa $RAIZ/.venv/bin/crux, o rehaz el enlace a mano si es lo que quieres"
+else
+  ln -sfn "$RAIZ/.venv/bin/crux" "$BIN/crux"
+  bien "enlazada en $BIN/crux"
+fi
+case ":$PATH:" in
+  *":$BIN:"*) ;;
+  # Debian añade ~/.local/bin desde ~/.profile sólo si el directorio ya existía
+  # al iniciar sesión. Si lo acabamos de crear, no estará hasta volver a entrar.
+  *) aviso "$BIN no está en tu PATH: abre una sesión nueva, o añádelo a tu shell" ;;
+esac
+
+# ── 8. Comprobación final ───────────────────────────────────────────────────
 paso "Comprobando la instalación"
 "$RAIZ/.venv/bin/crux" doctor
