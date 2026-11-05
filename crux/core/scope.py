@@ -177,6 +177,13 @@ class Scope:
     # Nombres extra permitidos aunque no sean objetivo directo (p. ej. un CDN
     # interno o un IdP de la intranet del que cuelga la app).
     extra_hosts: list[str] = field(default_factory=list)
+    # Proveedores de identidad: hosts a los que hay que ir para ENTRAR en la
+    # aplicación —un Keycloak, un ADFS—, y nada más. Se resuelven y se congelan
+    # como el resto, y el aislamiento de red les da ruta, pero no son
+    # auditables: `allows_host` dice que no aunque compartan IP con un objetivo.
+    # Un Keycloak corporativo da servicio a cien aplicaciones; auditar una no
+    # autoriza a escanearlo a él.
+    proveedores_identidad: list[str] = field(default_factory=list)
     _frozen_dns: dict[str, tuple[IPAddress, ...]] = field(default_factory=dict, repr=False)
     _allowed_ips: set[IPAddress] = field(default_factory=set, repr=False)
     _allowed_networks: list[IPNetwork] = field(default_factory=list, repr=False)
@@ -191,6 +198,7 @@ class Scope:
         allow_shared: bool = False,
         allow_internal: bool = False,
         extra_hosts: Iterable[str] = (),
+        proveedores_identidad: Iterable[str] = (),
     ) -> Scope:
         """Resuelve y valida los objetivos. Lanza `ScopeError` si ninguno sirve."""
         scope = cls(allow_public=allow_public, allow_shared=allow_shared,
@@ -217,10 +225,37 @@ class Scope:
             scope._frozen_dns[host.lower()] = addresses
             scope._allowed_ips.update(addresses)
 
+        for crudo in proveedores_identidad:
+            scope._admitir_proveedor(crudo)
+
         if not scope.entries:
             detail = "; ".join(f"{raw}: {why}" for raw, why in scope.rejected)
             raise ScopeError(f"ningún objetivo válido en el alcance ({detail})")
         return scope
+
+    def _admitir_proveedor(self, crudo: str) -> None:
+        """Congela un proveedor de identidad, con las mismas reglas que un objetivo.
+
+        Acepta una URL o un nombre. Un proveedor que resuelva a una IP pública
+        se rechaza salvo con `allow_public`, igual que un objetivo: que sea
+        «solo para entrar» no cambia que el tráfico saldría de la red interna.
+        """
+        host = (urlsplit(crudo).hostname if "://" in crudo else crudo).strip().lower()
+        if not host or host in self.proveedores_identidad:
+            return
+        try:
+            direcciones = _resolve(host)
+        except ScopeError as exc:
+            self.rejected.append((crudo, f"proveedor de identidad: {exc}"))
+            return
+        if not self.allow_public and not all(
+                is_internal(d, allow_shared=self.allow_shared) for d in direcciones):
+            self.rejected.append(
+                (crudo, "el proveedor de identidad resuelve a una IP pública; "
+                        "usa --allow-public si es intencionado"))
+            return
+        self._frozen_dns[host] = direcciones
+        self.proveedores_identidad.append(host)
 
     def _admit(self, entry: ScopeEntry) -> None:
         self.entries.append(entry)
@@ -237,9 +272,9 @@ class Scope:
         return self._frozen_dns.get(host.lower(), ())
 
     def allows_host(self, host: str) -> bool:
-        """¿Se puede contactar este host? Un nombre no congelado no se permite."""
+        """¿Se puede auditar este host? Un nombre no congelado no se permite."""
         host = host.strip().lower()
-        if not host:
+        if not host or host in self.proveedores_identidad:
             return False
         try:
             addr = ipaddress.ip_address(host)
@@ -278,6 +313,14 @@ class Scope:
             return False
         return bool(host) and self.allows_host(host)
 
+    def es_proveedor(self, url_o_host: str) -> bool:
+        host = urlsplit(url_o_host).hostname if "://" in url_o_host else url_o_host
+        return bool(host) and host.lower() in self.proveedores_identidad
+
+    def permite_para_entrar(self, url: str) -> bool:
+        """¿Puede el navegador del login ir aquí? Lo auditable y los proveedores."""
+        return self.allows_url(url) or self.es_proveedor(url)
+
     def require(self, host: str) -> None:
         if not self.allows_host(host):
             raise ScopeViolation(f"{host!r} está fuera del alcance congelado de este escaneo")
@@ -298,6 +341,7 @@ class Scope:
             "allow_shared": self.allow_shared,
             "allow_internal": self.allow_internal,
             "extra_hosts": self.extra_hosts,
+            "proveedores_identidad": self.proveedores_identidad,
             "frozen_dns": {h: [str(a) for a in ips] for h, ips in self._frozen_dns.items()},
             "rejected": [{"target": raw, "reason": why} for raw, why in self.rejected],
         }

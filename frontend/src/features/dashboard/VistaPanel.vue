@@ -113,6 +113,7 @@ const ENCENDIDO = { rojo: 'aviso-rojo', ambar: 'aviso-ambar' }
 const hayCambio = computed(() => datos.value?.cambio != null)
 
 const conteo = computed(() => datos.value?.cobertura.conteo ?? null)
+const sesionDelEscaneo = computed(() => datos.value?.cobertura.sesion ?? null)
 
 const tareasConPega = computed(() =>
   (datos.value?.cobertura.tareas ?? []).filter(
@@ -556,6 +557,30 @@ onBeforeUnmount(() => {
             :title="t.error ?? ''"
           >{{ t.name }}, {{ TAREA_ES[t.status] ?? t.status }}</span>
         </div>
+        <!-- Con qué sesión. Un escaneo con credenciales que no se distinga de
+             uno sin ellas es justo el fallo que esto tiene que delatar. -->
+        <p v-if="sesionDelEscaneo" class="m-0 text-[13px]"
+           :class="sesionDelEscaneo.perdidas?.length ? 'text-crit-fg'
+                 : sesionDelEscaneo.verificada ? 'text-fg-dim' : 'text-high-fg'">
+          Con la sesión de «{{ sesionDelEscaneo.nombre }}»<template
+            v-if="sesionDelEscaneo.proveedor">, por {{ sesionDelEscaneo.proveedor }}</template>.
+          <template v-if="sesionDelEscaneo.verificada">
+            Comprobada: {{ sesionDelEscaneo.comprobacion.sin_sesion }} sin ella,
+            {{ sesionDelEscaneo.comprobacion.con_sesion }} con ella.
+          </template>
+          <template v-else>No se pudo confirmar fuera del navegador.</template>
+          <template v-if="sesionDelEscaneo.renovaciones">
+            Se renovó {{ sesionDelEscaneo.renovaciones }}
+            {{ sesionDelEscaneo.renovaciones === 1 ? 'vez' : 'veces' }}.
+          </template>
+          <template v-if="sesionDelEscaneo.perdidas?.length">
+            Se perdió en {{ sesionDelEscaneo.perdidas.map((p) => p.fase).join(', ') }}:
+            lo que esas fases no encontraron detrás del login no está comprobado.
+          </template>
+        </p>
+        <p v-else-if="ultimo && datos?.cobertura.tareas.length" class="m-0 text-[13px] text-fg-dim">
+          Sin credenciales: solo se vio lo que la aplicación enseña a un anónimo.
+        </p>
         <!-- De cuántos hallazgos se partió y en qué se quedaron. Reducir
              por huella o por absorción es correcto; lo que no puede ser es
              que la diferencia no se pueda explicar. -->

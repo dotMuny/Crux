@@ -26,6 +26,7 @@ from typing import Any, AsyncIterator, Sequence
 from .sandbox import SandboxDeRed, SandboxNoDisponible, comprobar_disponible
 from .scan import ScanOutcome, run_code_scan, run_web_scan
 from .scope import Scope, ScopeError
+from ..modules.auth import AutenticacionFallida, construir_alcance
 from .worker import (
     resumen_de,
     serializar_credenciales,
@@ -42,6 +43,7 @@ MAX_CONCURRENTES = 2
 FASES_FINALES = (
     "hecho", "error", "cancelado",
     "alcance-rechazado", "ruta-invalida", "aislamiento-imposible",
+    "autenticacion-fallida",
 )
 
 # Cuántos eventos se guardan por trabajo, para que quien se conecte tarde a la
@@ -260,6 +262,13 @@ class ColaDeTrabajos:
                 trabajo.estado = "fallido"
                 trabajo.error = str(exc)
                 trabajo.publicar("aislamiento-imposible", str(exc), 1.0)
+            except AutenticacionFallida as exc:
+                # No se pudo entrar. No se escanea como anónimo: quien da unas
+                # credenciales está pidiendo ver lo de dentro, y un informe
+                # hecho desde fuera parecería completo sin serlo.
+                trabajo.estado = "fallido"
+                trabajo.error = str(exc)
+                trabajo.publicar("autenticacion-fallida", str(exc), 1.0)
             except ScopeError as exc:
                 # El alcance rechazado no es un fallo del programa: es el
                 # control de seguridad funcionando, y merece su propio mensaje.
@@ -295,10 +304,14 @@ class ColaDeTrabajos:
         # objetivo fuera de las redes internas se rechaza sin haber montado el
         # namespace, y las direcciones que el cortafuegos permitirá son las
         # mismas que el escaneo tiene permitido visitar.
-        scope = Scope.build(
+        # Con los proveedores de identidad dentro: si no, el namespace no les da
+        # ruta ni nombre, y el login no tiene por dónde salir.
+        scope = construir_alcance(
             trabajo.targets,
             allow_public=kwargs.get("allow_public", False),
             extra_hosts=kwargs.get("extra_hosts", ()),
+            credenciales=kwargs.get("credenciales"),
+            roles=kwargs.get("roles", ()),
         )
         caja = SandboxDeRed(nombre=f"cxweb{trabajo.id}", scope=scope)
 
@@ -395,7 +408,8 @@ class ColaDeTrabajos:
 
         if fallo is not None:
             clase, mensaje = fallo
-            raise (ScopeError if clase == "ScopeError" else RuntimeError)(mensaje)
+            raise {"ScopeError": ScopeError,
+                   "AutenticacionFallida": AutenticacionFallida}.get(clase, RuntimeError)(mensaje)
         if scan_id is None:
             # El hijo murió sin contar nada. Su salida de error es lo único que
             # explica por qué, así que se enseña en vez de un código a secas.

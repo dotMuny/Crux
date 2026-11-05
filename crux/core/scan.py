@@ -26,9 +26,11 @@ from sqlalchemy.orm import Session
 from ..adapters import all_adapters
 from ..adapters.base import ScanContext
 from ..modules import activos, jwt as jwt_mod, passive
-from ..modules.auth import Credenciales, Sesion, autenticar
+from ..modules.auth import (
+    AutenticacionFallida, Credenciales, Sesion, construir_alcance, entrar, sigue_viva,
+)
 from ..modules.authz import ComparadorDeRoles, comprobar_fijacion_de_sesion
-from ..modules.crawler import Crawler, nuevo_navegador
+from ..modules.crawler import Crawler
 from ..modules.probe import ProbeResult, Prober
 from . import paths
 from .equivalence import canonical_for, prefer
@@ -118,9 +120,11 @@ async def run_web_scan(
 ) -> ScanOutcome:
     """Ejecuta un escaneo web completo y lo persiste.
 
-    `credenciales` autentica al crawler. `roles` son tripletas
-    (nombre, rol, credenciales) para comparar control de acceso: hacen falta al
-    menos dos para que la comparación diga algo.
+    `credenciales` autentica el escaneo entero: sondas, crawler, comprobaciones
+    propias y herramientas. Si no se consigue entrar, el escaneo se para con
+    `AutenticacionFallida` y el motivo: seguir como anónimo daría un informe
+    que parece completo y no lo es. `roles` son tripletas (nombre, rol,
+    credenciales) para comparar control de acceso, y siguen la misma regla.
 
     `con_crawler=False` omite el navegador. Cuesta unos segundos por escaneo y
     es lo que más tarda cuando no aporta: en una API sin interfaz, o en los
@@ -129,8 +133,9 @@ async def run_web_scan(
     policy = get_policy(profile)
     # Construir el alcance resuelve DNS y rechaza lo que no sea interno: si esto
     # lanza, no se ha tocado nada todavía.
-    scope = Scope.build(
-        targets, allow_public=allow_public, extra_hosts=extra_hosts
+    scope = construir_alcance(
+        targets, allow_public=allow_public, extra_hosts=extra_hosts,
+        credenciales=credenciales, roles=roles,
     )
 
     init_db(db)
@@ -175,15 +180,61 @@ async def run_web_scan(
     runner = Runner(workdir=workdir, audit=lambda a, d: audit.append((a, d)))
 
     try:
+        # ── Fase 0: entrar ────────────────────────────────────────────────
+        # Antes que nada: la sesión la usan todas las fases, incluidas las
+        # sondas. Y si no se consigue, mejor saberlo en diez segundos que tras
+        # veinte minutos de escaneo anónimo.
+        sesion: Sesion | None = None
+        sesiones_roles: list[Sesion] = []
+        vigilancia = _Vigilancia()
+        if credenciales is not None and credenciales.modo != "ninguno":
+            progress("autenticacion", "entrando en la aplicación", 0.0)
+            with _task(db, scan_id, "autenticacion", "crux") as task:
+                sesion = await asyncio.to_thread(entrar, credenciales, scope, nombre="principal")
+                task["detail"] = _detalle_de_sesion(sesion)
+                if not sesion.autenticada:
+                    task["status"] = RunStatus.FAILED
+            if not sesion.autenticada:
+                raise AutenticacionFallida(_motivo_completo(sesion, scope))
+            vigilancia.inicial = sesion
+        for nombre_rol, rol, credencial in roles:
+            progress("autenticacion", f"entrando como «{nombre_rol}»", 0.02)
+            with _task(db, scan_id, f"autenticacion:{nombre_rol}", "crux") as task:
+                # Cada rol en su propio navegador: con un proveedor de SSO, el
+                # segundo entraba como el primero sin ver el formulario.
+                s_rol = await asyncio.to_thread(entrar, credencial, scope,
+                                                nombre=nombre_rol, rol=rol)
+                task["detail"] = _detalle_de_sesion(s_rol)
+                if not s_rol.autenticada:
+                    task["status"] = RunStatus.FAILED
+            if not s_rol.autenticada:
+                raise AutenticacionFallida(
+                    f"el rol «{nombre_rol}» no pudo entrar: {_motivo_completo(s_rol, scope)}")
+            sesiones_roles.append(s_rol)
+
+        def reentrar() -> Sesion | None:
+            """Una sesión nueva con las mismas credenciales, o `None`.
+
+            Se llama desde el hilo del crawler; el login va en su propio hilo.
+            """
+            if credenciales is None:
+                return None
+            nueva = entrar(credenciales, scope, nombre="principal")
+            vigilancia.renovaciones += 1
+            return nueva if nueva.autenticada else None
+
         # ── Fase 1: probar y tomar huella ─────────────────────────────────
-        progress("probe", "probando objetivos", 0.0)
+        progress("probe", "probando objetivos", 0.04)
         urls = seed_urls(scope)
-        prober = Prober(scope, policy)
+        prober = Prober(scope, policy, sesion=sesion)
         with _task(db, scan_id, "probe", "crux") as task:
             outcome.probes = await prober.probe_many(urls)
             alive = [p for p in outcome.probes if p.alive]
             task["detail"] = f"{len(alive)} de {len(urls)} URLs responden"
         progress("probe", f"{len(alive)} URLs vivas de {len(urls)}", 0.25)
+
+        if sesion is None:
+            outcome.findings.extend(_solo_la_puerta(outcome.probes))
 
         # ── Fase 2: comprobaciones propias, sin red ───────────────────────
         with _task(db, scan_id, "checks-pasivos", "crux") as task:
@@ -214,11 +265,18 @@ async def run_web_scan(
                         + [p.final_url for p in outcome.probes if p.alive]
                     ))
                     crawl = await asyncio.to_thread(
-                        Crawler(scope, policy, credenciales=credenciales).recorrer,
+                        Crawler(scope, policy, sesion=sesion,
+                                reentrar=reentrar if sesion is not None else None).recorrer,
                         semillas,
                     )
                     task["detail"] = (f"{crawl.paginas_visitadas} páginas, "
                                       f"{len(crawl.endpoints)} endpoints")
+                    if crawl.sesion is not None and crawl.sesion is not sesion:
+                        # El crawler tuvo que volver a entrar: la sesión vieja ya
+                        # no vale para nadie.
+                        sesion = crawl.sesion
+                    if crawl.sesion_perdida:
+                        vigilancia.perdidas.append(("crawler", crawl.sesion_perdida))
                     cobertura_origenes.add("crawler")
                 except Exception as exc:
                     # Sin navegador el escaneo sigue: se pierde cobertura, no
@@ -228,12 +286,15 @@ async def run_web_scan(
 
         if crawl is not None:
             outcome.findings.extend(_hallazgos_de_crawl(crawl))
+            ya_dicho = any(f.check_id == "escaneo-sin-sesion" for f in outcome.findings)
+            if sesion is None and crawl.proveedores_vistos and not ya_dicho:
+                outcome.findings.extend(_solo_la_puerta([], crawl.proveedores_vistos))
 
         # ── Fase 4: comprobaciones que necesitan el recorrido ─────────────
         if crawl is not None and policy.allow_active_probes:
             progress("jwt", "analizando tokens", 0.55)
             with _task(db, scan_id, "jwt", "crux") as task:
-                encontrados = await _fase_jwt(scope, policy, outcome, crawl, credenciales)
+                encontrados = await _fase_jwt(scope, policy, outcome, crawl, sesion)
                 outcome.findings.extend(encontrados)
                 cobertura_origenes.add("jwt")
                 task["detail"] = f"{len(encontrados)} hallazgos"
@@ -244,7 +305,7 @@ async def run_web_scan(
                 endpoints = [{"url": e.url, "params": e.params}
                              for e in crawl.con_parametros]
                 encontrados = await activos.comprobar_redireccion_abierta(
-                    scope, policy, endpoints
+                    scope, policy, endpoints, sesion=sesion
                 )
                 outcome.findings.extend(encontrados)
                 cobertura_origenes.add("activos")
@@ -253,7 +314,7 @@ async def run_web_scan(
         if len(roles) >= 1 and crawl is not None:
             progress("authz", "comparando roles", 0.62)
             with _task(db, scan_id, "authz", "crux") as task:
-                encontrados = await _fase_authz(scope, policy, crawl, roles)
+                encontrados = await _fase_authz(scope, policy, crawl, sesiones_roles)
                 outcome.findings.extend(encontrados)
                 cobertura_origenes.add("authz")
                 task["detail"] = f"{len(encontrados)} hallazgos"
@@ -263,6 +324,7 @@ async def run_web_scan(
             scope=scope,
             policy=policy,
             workdir=workdir,
+            sesion=sesion,
             project_id=project_id,
             scan_id=scan_id,
             discovered={
@@ -299,20 +361,47 @@ async def run_web_scan(
                     task["status"] = RunStatus.SKIPPED
                     task["detail"] = "no instalada"
                     continue
+                if sesion is not None:
+                    # Una herramienta que arranca con la sesión caducada recorre
+                    # la aplicación como anónima y no lo sabe. Se comprueba
+                    # antes, y se vuelve a entrar si hace falta.
+                    viva = await asyncio.to_thread(sigue_viva, sesion, scope)
+                    if viva is False:
+                        nueva = await asyncio.to_thread(reentrar)
+                        if nueva is None:
+                            vigilancia.perdidas.append(
+                                (name, "la sesión había caducado y no se pudo volver a entrar"))
+                        else:
+                            sesion = context.sesion = nueva
                 try:
                     produced = await adapter.execute(context, runner)
                 except ToolMissing as exc:
                     task["status"] = RunStatus.SKIPPED
                     task["detail"] = str(exc)
                     continue
+                finally:
+                    # Los ficheros con la sesión no se quedan en disco: el
+                    # directorio del escaneo se guarda, la sesión no.
+                    for secreto in context.secretos:
+                        secreto.unlink(missing_ok=True)
+                    context.secretos.clear()
                 outcome.findings.extend(produced)
                 cobertura_origenes.add(name)
                 task["detail"] = f"{len(produced)} hallazgos"
+                if sesion is not None:
+                    viva = await asyncio.to_thread(sigue_viva, sesion, scope)
+                    if viva is False:
+                        vigilancia.perdidas.append(
+                            (name, "la sesión caducó mientras se ejecutaba"))
+                        task["detail"] += "; la sesión caducó durante la ejecución"
+
+        outcome.findings.extend(vigilancia.avisos(sesion))
 
         progress("persist", "guardando resultados", 0.92)
         _persist(db, scan_id, project_id, outcome, scope, audit,
                  cobertura_checks, cobertura_origenes,
-                 superficie=_superficie(outcome.probes, crawl))
+                 superficie=_superficie(outcome.probes, crawl),
+                 sesion=vigilancia.resumen(sesion, sesiones_roles))
         progress("done", "escaneo terminado", 1.0)
         return outcome
 
@@ -537,7 +626,8 @@ def _persist(db, scan_id: int, project_id: int, outcome: ScanOutcome,
              scope: Scope | None, audit: list[tuple[str, dict]],
              cobertura_checks: set[str] | None = None,
              cobertura_origenes: set[str] | None = None,
-             superficie: dict[str, Any] | None = None) -> None:
+             superficie: dict[str, Any] | None = None,
+             sesion: dict[str, Any] | None = None) -> None:
     """Guarda hallazgos y cruza con el triaje previo del proyecto.
 
     Lleva la cuenta de cada reducción —colapsos por huella, absorciones— y
@@ -736,6 +826,9 @@ def _persist(db, scan_id: int, project_id: int, outcome: ScanOutcome,
             # interfaz lo enseña: un informe tiene que poder explicar la
             # diferencia entre lo que se encontró y lo que se lee.
             "conteo": conteo,
+            # Con qué sesión se hizo el escaneo, si se hizo con una. Nombres,
+            # modo y estado: nunca valores.
+            "sesion": sesion,
         }
         if superficie is not None:
             scan.surface = superficie
@@ -782,7 +875,7 @@ def _hallazgos_de_crawl(crawl) -> list[Finding]:
 
 
 async def _fase_jwt(scope: Scope, policy: Policy, outcome: ScanOutcome,
-                    crawl, credenciales: Credenciales | None) -> list[Finding]:
+                    crawl, sesion: Sesion | None) -> list[Finding]:
     """Busca JWTs en lo observado y, si hay dónde probarlos, los forja."""
     import httpx
 
@@ -796,14 +889,13 @@ async def _fase_jwt(scope: Scope, policy: Policy, outcome: ScanOutcome,
             # El valor, no el nombre: es donde vive el token.
             textos.append((f"cookie:{cookie.get('name')}", str(cookie.get("value", ""))))
         textos.append((f"body:{sonda.final_url}", sonda.body_preview))
-    if crawl is not None and crawl.sesion is not None:
-        for nombre, valor in crawl.sesion.cookies.items():
+    if sesion is not None:
+        for nombre, valor in sesion.cookies.items():
             textos.append((f"cookie:{nombre}", valor))
-        for nombre, valor in crawl.sesion.cabeceras.items():
-            textos.append((f"header:{nombre}", valor))
-    if credenciales:
-        for nombre, valor in credenciales.cabeceras.items():
-            textos.append((f"credencial:{nombre}", valor))
+        for nombre, valor in sesion.cabeceras.items():
+            # Un token capturado de la aplicación es exactamente lo que hay que
+            # analizar: es el que emite su proveedor.
+            textos.append((f"header:{nombre}", valor.removeprefix("Bearer ")))
 
     tokens = jwt_mod.extraer(textos)
     if not tokens:
@@ -833,28 +925,13 @@ async def _fase_jwt(scope: Scope, policy: Policy, outcome: ScanOutcome,
 
 
 async def _fase_authz(scope: Scope, policy: Policy, crawl,
-                      roles: Sequence[tuple[str, str, Credenciales]]) -> list[Finding]:
-    """Compara lo que ve cada rol. Necesita al menos una sesión autenticada."""
-    sesiones: list[Sesion] = [Sesion(nombre="anónima", autenticada=False)]
-    driver = None
-    try:
-        for nombre, rol, credencial in roles:
-            if credencial.modo == "formulario":
-                if driver is None:
-                    driver = await asyncio.to_thread(nuevo_navegador)
-                sesion = await asyncio.to_thread(
-                    autenticar, driver, credencial, nombre=nombre, rol=rol
-                )
-            else:
-                sesion = await asyncio.to_thread(
-                    autenticar, None, credencial, nombre=nombre, rol=rol
-                )
-            sesiones.append(sesion)
-    finally:
-        if driver is not None:
-            with contextlib.suppress(Exception):
-                await asyncio.to_thread(driver.quit)
+                      sesiones_roles: Sequence[Sesion]) -> list[Finding]:
+    """Compara lo que ve cada rol con lo que ve un anónimo.
 
+    Las sesiones llegan hechas desde la fase 0, cada una en su navegador. Si
+    alguna no se hubiera podido abrir, el escaneo ya se habría parado.
+    """
+    sesiones: list[Sesion] = [Sesion(nombre="anónima", autenticada=False), *sesiones_roles]
     if sum(1 for s in sesiones if s.autenticada) == 0:
         return []
 
@@ -964,3 +1041,135 @@ async def run_code_scan(
             scan.error = f"{type(exc).__name__}: {exc}"
             scan.finished_at = _utcnow()
         raise
+
+
+# ── Sesión: descripción y vigilancia ───────────────────────────────────────
+def _detalle_de_sesion(sesion: Sesion) -> str:
+    if not sesion.autenticada:
+        return sesion.motivo
+    partes = [f"dentro como «{sesion.nombre}»"]
+    if sesion.proveedor:
+        partes.append(f"por {sesion.proveedor}")
+    if sesion.verificada:
+        c = sesion.comprobacion
+        partes.append(f"comprobada: {c.get('sin_sesion')} sin sesión, "
+                      f"{c.get('con_sesion')} con ella")
+    else:
+        partes.append("sin poder confirmarla fuera del navegador")
+    return ", ".join(partes)
+
+
+def _motivo_completo(sesion: Sesion, scope: Scope) -> str:
+    """El motivo del login, más lo que el alcance rechazó por el camino.
+
+    Un proveedor descubierto que resuelve a una IP pública no entra en el
+    alcance, y el login dice «no declarado». Sin esta línea, el operador lo
+    declararía y volvería a fallar sin entender por qué.
+    """
+    rechazos = [f"{raw}: {why}" for raw, why in scope.rejected if "proveedor" in why]
+    return sesion.motivo + (f" ({'; '.join(rechazos)})" if rechazos else "")
+
+
+class _Vigilancia:
+    """Lo que le pasó a la sesión durante el escaneo, para contarlo después."""
+
+    def __init__(self) -> None:
+        self.inicial: Sesion | None = None
+        self.renovaciones = 0
+        # (fase, qué pasó)
+        self.perdidas: list[tuple[str, str]] = []
+
+    def resumen(self, sesion: Sesion | None,
+                roles: Sequence[Sesion]) -> dict[str, Any] | None:
+        if sesion is None and not roles:
+            return None
+        datos: dict[str, Any] = {}
+        if sesion is not None:
+            datos = sesion.describe()
+            datos["renovaciones"] = self.renovaciones
+            datos["perdidas"] = [{"fase": f, "que": q} for f, q in self.perdidas]
+        if roles:
+            datos["roles"] = [r.describe() for r in roles]
+        return datos
+
+    def avisos(self, sesion: Sesion | None) -> list[Finding]:
+        """Hallazgos sobre el propio escaneo, cuando la sesión no aguantó entera.
+
+        No son de la aplicación: dicen qué parte del informe se hizo sin
+        autenticar. Sin ellos, un «no se encontró nada» detrás del login no
+        se distingue de un «no se pudo mirar».
+        """
+        from .severity import Confidence, Severity
+
+        hallazgos: list[Finding] = []
+        if sesion is not None and not sesion.verificada:
+            hallazgos.append(Finding(
+                source="crux", check_id="sesion-sin-confirmar",
+                title="No se pudo confirmar que la sesión funcione fuera del navegador",
+                description=(
+                    "El navegador entró, pero con y sin la sesión la aplicación "
+                    f"respondió lo mismo en {sesion.url_prueba or 'la URL de prueba'}. "
+                    "Puede ser una página pública, o que la sesión no se esté usando. "
+                    "Tampoco se puede vigilar si caduca durante el escaneo."),
+                remediation=(
+                    "Indica en «Señal de que se ha entrado» un texto que solo se vea "
+                    "con la sesión, o revisa las tareas: si los hallazgos se parecen "
+                    "a los de un escaneo sin credenciales, la sesión no se usó."),
+                target="crux", severity=Severity.MEDIUM, confidence=Confidence.CERTAIN,
+                tags=["cobertura"], extra={"comprobacion": sesion.comprobacion},
+            ))
+        if self.perdidas:
+            fases = ", ".join(dict.fromkeys(f for f, _ in self.perdidas))
+            hallazgos.append(Finding(
+                source="crux", check_id="sesion-perdida",
+                title=f"La sesión se perdió durante el escaneo ({fases})",
+                description=(
+                    "Parte del escaneo se hizo sin autenticar: "
+                    + "; ".join(f"{f}: {q}" for f, q in self.perdidas)
+                    + ". Lo que esas fases no encontraron detrás del login no está "
+                      "comprobado."),
+                remediation=(
+                    "Alarga la vida de la sesión del usuario de auditoría en el "
+                    "proveedor o en la aplicación, o lanza por separado las fases "
+                    "que la perdieron."),
+                target="crux", severity=Severity.HIGH, confidence=Confidence.CERTAIN,
+                tags=["cobertura"], extra={"perdidas": self.perdidas,
+                                           "renovaciones": self.renovaciones},
+            ))
+        return hallazgos
+
+
+def _solo_la_puerta(sondas, vistos_por_el_navegador: Sequence[str] = ()) -> list[Finding]:
+    """Un escaneo anónimo de una aplicación que exige entrar ve la puerta y poco más.
+
+    Hay que decirlo: el informe de una aplicación con SSO escaneada sin
+    credenciales sale casi vacío, y casi vacío se lee como «segura». Es lo
+    contrario de lo que pasa: no se ha podido mirar.
+    """
+    from ..modules.auth import _host, es_redireccion_de_acceso
+    from .severity import Confidence, Severity
+
+    a_entrar = [s for s in sondas
+                if s.redirect_chain and es_redireccion_de_acceso(s.redirect_chain[-1], s.url)]
+    if not a_entrar and not vistos_por_el_navegador:
+        return []
+    proveedores = sorted({_host(s.redirect_chain[-1]) for s in a_entrar}
+                         | set(vistos_por_el_navegador))
+    origen = (f"{len(a_entrar)} de las URL sondeadas mandan" if a_entrar
+              else "Al recorrerla, el navegador acabó")
+    return [Finding(
+        source="crux", check_id="escaneo-sin-sesion",
+        title=f"La aplicación exige autenticarse en {', '.join(proveedores)}: se vio solo la puerta",
+        description=(
+            f"{origen} a autenticarse en "
+            f"{', '.join(proveedores)}. Sin credenciales, este escaneo solo ve lo que "
+            "la aplicación enseña a un anónimo, que en una aplicación con SSO es "
+            "casi nada. Que el informe salga casi vacío no significa que la "
+            "aplicación esté bien: significa que no se ha podido mirar."),
+        remediation=(
+            "Repite el escaneo con un usuario de auditoría, usando como URL de acceso "
+            "la de la aplicación."),
+        target=a_entrar[0].url if a_entrar else proveedores[0], severity=Severity.INFO, confidence=Confidence.CERTAIN,
+        tags=["cobertura"], extra={"proveedores": proveedores,
+                                   "urls": [s.url for s in a_entrar][:20]},
+    )]

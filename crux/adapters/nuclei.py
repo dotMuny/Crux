@@ -191,6 +191,10 @@ class NucleiAdapter(Adapter):
             else:
                 # Perfil pasivo: nada que envíe cargas al objetivo.
                 argv += ["-etags", "intrusive,dos,fuzz,dast,sqli,xss,rce,lfi"]
+
+        secretos = secretos_de_sesion(ctx)
+        if secretos is not None:
+            argv += ["-sf", str(secretos)]
         return argv
 
     def parse(self, run: ToolRun, ctx: ScanContext) -> Iterable[Finding]:
@@ -342,3 +346,33 @@ def _as_list(value) -> list[str]:
     if isinstance(value, (list, tuple)):
         return [str(v) for v in value if str(v).strip()]
     return [str(value)]
+
+
+def secretos_de_sesion(ctx: ScanContext):
+    """La sesión en el formato de secretos de nuclei, o `None` si no hay sesión.
+
+    Va en fichero (`-sf`) y no con `-H`: los argumentos de un proceso los ve
+    cualquiera con `ps`. Y va atada a los hosts auditables: nuclei solo la manda
+    a ellos, nunca a un tercero al que una plantilla le haga seguir un enlace.
+    """
+    import json
+
+    sesion = ctx.sesion
+    if sesion is None or not (sesion.cookies or sesion.cabeceras):
+        return None
+    dominios = ctx.hosts_auditables(con_puerto=True)
+    if not dominios:
+        return None
+    entradas = []
+    if sesion.cookies:
+        entradas.append({
+            "type": "cookie", "domains": dominios,
+            "cookies": [{"key": k, "value": v} for k, v in sesion.cookies.items()],
+        })
+    if sesion.cabeceras:
+        entradas.append({
+            "type": "header", "domains": dominios,
+            "headers": [{"key": k, "value": v} for k, v in sesion.cabeceras.items()],
+        })
+    # JSON es YAML válido, y así no hay que escapar nada a mano.
+    return ctx.fichero_secreto("nuclei-sesion.yaml", json.dumps({"static": entradas}))

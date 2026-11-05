@@ -31,7 +31,7 @@ type ModoAuth = 'ninguna' | 'formulario' | 'cabecera' | 'cookies'
 const modoAuth = ref<ModoAuth>('ninguna')
 const acceso = reactive({
   url: '', usuario: '', clave: '',
-  selectorUsuario: '', selectorClave: '', senal: '',
+  selectorUsuario: '', selectorClave: '', senal: '', proveedor: '',
 })
 const cabecerasCrudas = ref('')
 const cookiesCrudas = ref('')
@@ -103,6 +103,7 @@ function credenciales(): Credenciales | null {
         selector_usuario: acceso.selectorUsuario.trim() || null,
         selector_clave: acceso.selectorClave.trim() || null,
         senal_de_exito: acceso.senal.trim() || null,
+        proveedor_identidad: acceso.proveedor.trim() || null,
       }
     case 'cabecera':
       return { cabeceras: pares(cabecerasCrudas.value, ':') }
@@ -123,7 +124,8 @@ function rolesParaEnviar(): Rol[] {
       credenciales: modoAuth.value === 'formulario'
         // La URL de acceso es la misma para todos los roles: lo que cambia es
         // con qué usuario se entra, que es justo lo que se compara.
-        ? { url_login: acceso.url.trim(), usuario: r.usuario, clave: r.clave }
+        ? { url_login: acceso.url.trim(), usuario: r.usuario, clave: r.clave,
+            proveedor_identidad: acceso.proveedor.trim() || null }
         : { cabeceras: pares(r.cabecera, ':') },
     }))
 }
@@ -181,8 +183,8 @@ async function lanzar() {
         // Ninguno de estos es un fallo del programa. El alcance rechazado y el
         // aislamiento imposible son controles de seguridad funcionando, y
         // merecen decirse con esas palabras.
-        if (['alcance-rechazado', 'ruta-invalida', 'aislamiento-imposible']
-          .includes(ev.fase)) fallo.value = ev.mensaje
+        if (['alcance-rechazado', 'ruta-invalida', 'aislamiento-imposible',
+          'autenticacion-fallida'].includes(ev.fase)) fallo.value = ev.mensaje
       },
       async () => {
         lanzando.value = false
@@ -345,8 +347,8 @@ const CAMPO = `bg-bg border border-line rounded-cx px-3 py-[9px] font-mono text-
             <div class="flex gap-2 flex-wrap">
               <input
                 v-model="acceso.url"
-                placeholder="https://app.intra.corp/login"
-                aria-label="URL del formulario de acceso"
+                placeholder="https://app.intra.corp/"
+                aria-label="URL de acceso"
                 :class="[CAMPO, 'flex-1 min-w-[240px]']"
               >
               <input
@@ -365,15 +367,31 @@ const CAMPO = `bg-bg border border-line rounded-cx px-3 py-[9px] font-mono text-
                 :class="[CAMPO, 'w-[150px]']"
               >
             </div>
+            <p class="m-0 text-[12px] text-fg-dim max-w-[80ch]">
+              La URL de la aplicación, aunque el formulario esté en Keycloak o en
+              un ADFS: Crux sigue la redirección y entra donde le manden. Si no
+              consigue entrar, el escaneo se para y dice por qué; no sigue como
+              anónimo.
+            </p>
             <button
-              class="self-start text-[12px] text-accent hover:underline"
+              class="self-start min-h-[32px] text-[13px] text-accent hover:text-fg"
               @click="selectoresAbiertos = !selectoresAbiertos"
-            >{{ selectoresAbiertos ? '− ' : '+ ' }}el formulario no es el habitual</button>
+            >{{ selectoresAbiertos ? '− ' : '+ ' }}El acceso no es el habitual</button>
             <div v-if="selectoresAbiertos" class="flex flex-col gap-2">
-              <p class="m-0 text-[12px] text-fg-faint">
-                Los campos se buscan por nombre («username», «password» y sus
-                variantes). Si el formulario usa otros, dilo con un selector CSS.
+              <p class="m-0 text-[12px] text-fg-dim max-w-[80ch]">
+                El proveedor de identidad solo hace falta si la aplicación salta a
+                él con JavaScript, como las que usan keycloak-js: si lo hace con
+                una redirección, se descubre solo. Se usa para entrar y nada más;
+                no se audita. Los campos se buscan por nombre («username»,
+                «password» y sus variantes); si el formulario usa otros, dilo con
+                un selector CSS.
               </p>
+              <input
+                v-model="acceso.proveedor"
+                placeholder="proveedor de identidad · https://sso.intra.corp"
+                aria-label="Proveedor de identidad"
+                :class="[CAMPO, 'w-full']"
+              >
               <div class="flex gap-2 flex-wrap">
                 <input
                   v-model="acceso.selectorUsuario"

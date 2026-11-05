@@ -50,6 +50,9 @@ class CredencialesEntrada(BaseModel):
     cabeceras: dict[str, str] = {}
     cookies: dict[str, str] = {}
     senal_de_exito: str | None = None
+    # Solo hace falta si la aplicación salta a él con JavaScript; si lo hace
+    # con una redirección, se descubre solo.
+    proveedor_identidad: str | None = None
 
     def construir(self):
         from ...modules.auth import Credenciales

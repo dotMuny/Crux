@@ -15,6 +15,7 @@ import type {
 export const FASES_FINALES = [
   'hecho', 'error', 'cancelado',
   'alcance-rechazado', 'ruta-invalida', 'aislamiento-imposible',
+  'autenticacion-fallida',
 ]
 
 export class ErrorDeApi extends Error {

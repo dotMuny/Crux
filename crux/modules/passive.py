@@ -18,6 +18,7 @@ from urllib.parse import urlsplit
 
 from ..core.findings import Evidence, EvidenceKind, Finding
 from ..core.severity import Confidence, Severity
+from .auth import es_redireccion_de_acceso
 from .probe import SECURITY_HEADERS, ProbeResult
 
 # Cabeceras cuya ausencia pesa más que el resto: sin estas dos, las demás son
@@ -304,6 +305,11 @@ def check_out_of_scope_redirect(result: ProbeResult) -> Iterable[Finding]:
     if not result.error or "fuera del alcance" not in result.error:
         return
     destination = result.redirect_chain[-1] if result.redirect_chain else "?"
+    # Mandar a un anónimo a autenticarse en el Keycloak de la casa no es una
+    # redirección abierta: el destino lo fija la configuración, no la petición.
+    # Salía en el informe de cada aplicación protegida por SSO.
+    if es_redireccion_de_acceso(destination, result.url):
+        return
     yield Finding(
         source="passive",
         check_id="open-redirect",

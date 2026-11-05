@@ -11,6 +11,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
+from urllib.parse import urlsplit
 from typing import Any, ClassVar, Iterable
 
 from ..core.egress import EgressPolicy
@@ -40,6 +41,46 @@ class ScanContext:
     # Resultados de fases anteriores que otros adaptadores pueden aprovechar:
     # URLs del crawler, parámetros descubiertos, huella tecnológica.
     discovered: dict[str, Any] = field(default_factory=dict)
+    # La sesión con la que escanear, si la hay. Un adaptador que la ignore va
+    # como anónimo: fue lo que pasaba con nuclei y wapiti.
+    sesion: Any = None
+    # Ficheros con la sesión que un adaptador escribió para su herramienta. El
+    # escaneo los borra en cuanto la herramienta termina.
+    secretos: list[Path] = field(default_factory=list)
+
+    def fichero_secreto(self, nombre: str, contenido: str) -> Path:
+        """Escribe un fichero que solo el usuario puede leer, y lo apunta para borrarlo.
+
+        La sesión va en fichero y no en la línea de órdenes: los argumentos de
+        un proceso los ve cualquier usuario del equipo con `ps`.
+        """
+        import os
+
+        ruta = self.workdir / nombre
+        descriptor = os.open(ruta, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as f:
+            f.write(contenido)
+        self.secretos.append(ruta)
+        return ruta
+
+    def hosts_auditables(self, *, con_puerto: bool = False) -> list[str]:
+        """Los hosts a los que una herramienta puede llevar la sesión.
+
+        `con_puerto` añade también cada `host:puerto` que aparezca en las URLs.
+        nuclei compara así: con `127.0.0.1` a secas no manda la sesión a
+        `127.0.0.1:8443`, y la herramienta corría anónima sin que nada lo
+        dijera. En una intranet, una aplicación en un puerto no estándar es lo
+        normal, no la excepción.
+        """
+        if self.scope is None:
+            return []
+        hosts = [h for h in self.scope.hosts if h]
+        if con_puerto:
+            for url in self.urls:
+                partes = urlsplit(url)
+                if partes.port is not None and self.scope.allows_url(url):
+                    hosts.append(partes.netloc.lower())
+        return list(dict.fromkeys(hosts))
 
     @property
     def urls(self) -> list[str]:

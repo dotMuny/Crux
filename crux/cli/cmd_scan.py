@@ -20,6 +20,7 @@ from ..core.report import render_html, render_pdf
 from ..core.report.html import LEVEL_LABEL, ORDER, build_context
 from ..core.scan import run_code_scan, run_web_scan
 from ..core.scope import ScopeError
+from ..modules.auth import AutenticacionFallida
 
 _SEV_STYLE = {
     "critical": "bold red", "high": "dark_orange", "medium": "yellow",
@@ -45,9 +46,13 @@ def scan() -> None:
               help="Host adicional permitido aunque no sea objetivo directo.")
 @click.option("--only", multiple=True,
               help="Ejecutar solo estos adaptadores (repetible).")
-@click.option("--login-url", help="URL del formulario de acceso.")
-@click.option("--user", "usuario", help="Usuario con el que entra el crawler.")
-@click.option("--password", "clave", help="Contraseña del usuario del crawler.")
+@click.option("--login-url", help="URL de acceso: la de la aplicación, aunque el "
+                                   "formulario esté en un Keycloak o un ADFS.")
+@click.option("--user", "usuario", help="Usuario con el que entra el escaneo.")
+@click.option("--password", "clave", help="Contraseña de ese usuario.")
+@click.option("--idp", "proveedor", help="Proveedor de identidad (Keycloak, ADFS…). Solo "
+                                        "hace falta si la aplicación salta a él con "
+                                        "JavaScript; una redirección se descubre sola.")
 @click.option("--selector-usuario", help="Selector CSS del campo de usuario, si la heurística falla.")
 @click.option("--selector-clave", help="Selector CSS del campo de contraseña.")
 @click.option("--header", "cabeceras", multiple=True, metavar="'K: V'",
@@ -63,7 +68,7 @@ def scan() -> None:
               help="Escribe el informe HTML en esta ruta (y el PDF junto a él).")
 @click.option("--no-pdf", is_flag=True, help="No generar el PDF.")
 def scan_web(targets, profile, project, allow_public, extra_hosts, only,
-             login_url, usuario, clave, selector_usuario, selector_clave,
+             login_url, usuario, clave, proveedor, selector_usuario, selector_clave,
              cabeceras, roles_crudos, sandbox, report_path, no_pdf) -> None:
     """Escanea una o varias aplicaciones web internas.
 
@@ -78,17 +83,18 @@ def scan_web(targets, profile, project, allow_public, extra_hosts, only,
     # propios módulos —probador, crawler, authz— hacen peticiones desde este
     # mismo proceso, así que envolver solo el argv de las herramientas externas
     # dejaría fuera justo la mitad del tráfico.
-    if sandbox and not os.environ.get("CRUX_EN_SANDBOX"):
-        _relanzar_en_sandbox(console, targets, allow_public, extra_hosts)
-        return
-
-    credenciales = _credenciales(login_url, usuario, clave,
+    credenciales = _credenciales(login_url, usuario, clave, proveedor,
                                  selector_usuario, selector_clave, cabeceras)
     try:
-        roles = _roles(roles_crudos, login_url)
+        roles = _roles(roles_crudos, login_url, proveedor)
     except ValueError as exc:
         console.print(f"[red]✗[/red] {exc}")
         raise SystemExit(2)
+
+    if sandbox and not os.environ.get("CRUX_EN_SANDBOX"):
+        _relanzar_en_sandbox(console, targets, allow_public, extra_hosts,
+                             credenciales, roles)
+        return
     if len(roles) == 1:
         # Un solo rol no permite comparar nada: mejor decirlo que ejecutar una
         # fase que no puede producir resultado.
@@ -128,6 +134,11 @@ def scan_web(targets, profile, project, allow_public, extra_hosts, only,
             console.print(Panel.fit(f"[bold red]Alcance rechazado[/bold red]\n{exc}",
                                     border_style="red"))
             raise SystemExit(2)
+        except AutenticacionFallida as exc:
+            # No se sigue como anónimo: el informe parecería completo sin serlo.
+            console.print(Panel.fit(f"[bold red]No se pudo entrar[/bold red]\n{exc}",
+                                    border_style="red"))
+            raise SystemExit(5)
 
     duration = _fmt_duration(time.monotonic() - clock)
     counts = outcome.by_severity
@@ -197,8 +208,9 @@ def _trim(text: str, width: int) -> str:
     return text if len(text) <= width else text[: width - 1] + "…"
 
 
-def _credenciales(login_url, usuario, clave, selector_usuario, selector_clave, cabeceras):
-    """Construye las credenciales del crawler, o None si no se dieron."""
+def _credenciales(login_url, usuario, clave, proveedor, selector_usuario,
+                  selector_clave, cabeceras):
+    """Construye las credenciales del escaneo, o None si no se dieron."""
     from ..modules.auth import Credenciales
 
     cabeceras_dict: dict[str, str] = {}
@@ -211,11 +223,11 @@ def _credenciales(login_url, usuario, clave, selector_usuario, selector_clave, c
     return Credenciales(
         url_login=login_url, usuario=usuario, clave=clave,
         selector_usuario=selector_usuario, selector_clave=selector_clave,
-        cabeceras=cabeceras_dict,
+        cabeceras=cabeceras_dict, proveedor_identidad=proveedor,
     )
 
 
-def _roles(roles_crudos, login_url):
+def _roles(roles_crudos, login_url, proveedor=None):
     """Interpreta NOMBRE:ROL:USUARIO:CLAVE. La contraseña puede llevar «:»."""
     from ..modules.auth import Credenciales
 
@@ -230,7 +242,8 @@ def _roles(roles_crudos, login_url):
         if not login_url:
             raise ValueError("--role necesita también --login-url")
         roles.append((nombre, rol,
-                      Credenciales(url_login=login_url, usuario=usuario, clave=clave)))
+                      Credenciales(url_login=login_url, usuario=usuario, clave=clave,
+                                   proveedor_identidad=proveedor)))
     return roles
 
 
@@ -317,7 +330,8 @@ def scan_code(ruta, project, only, report_path, no_pdf) -> None:
                 console.print(f"[yellow]–[/yellow] PDF no generado: {exc}")
 
 
-def _relanzar_en_sandbox(console, targets, allow_public, extra_hosts) -> None:
+def _relanzar_en_sandbox(console, targets, allow_public, extra_hosts,
+                         credenciales=None, roles=()) -> None:
     """Monta el aislamiento y vuelve a lanzar este mismo comando dentro.
 
     Re-ejecutar el proceso completo es lo que de verdad contiene el escaneo:
@@ -328,7 +342,8 @@ def _relanzar_en_sandbox(console, targets, allow_public, extra_hosts) -> None:
     import sys
 
     from ..core.sandbox import SandboxDeRed, SandboxNoDisponible, comprobar_disponible
-    from ..core.scope import Scope, ScopeError
+    from ..core.scope import ScopeError
+    from ..modules.auth import construir_alcance
 
     disponible, motivo = comprobar_disponible()
     if not disponible:
@@ -340,8 +355,11 @@ def _relanzar_en_sandbox(console, targets, allow_public, extra_hosts) -> None:
         raise SystemExit(3)
 
     try:
-        scope = Scope.build(targets, allow_public=allow_public,
-                            extra_hosts=list(extra_hosts))
+        # Con los proveedores de identidad: si no, el namespace no les da ruta
+        # y el login no tiene por dónde salir.
+        scope = construir_alcance(targets, allow_public=allow_public,
+                                  extra_hosts=list(extra_hosts),
+                                  credenciales=credenciales, roles=roles)
     except ScopeError as exc:
         console.print(f"[red]✗[/red] {exc}")
         raise SystemExit(2)

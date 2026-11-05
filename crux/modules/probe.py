@@ -120,10 +120,16 @@ class ProbeResult:
 class Prober:
     """Prueba URLs respetando el alcance y el perfil."""
 
-    def __init__(self, scope: Scope, policy: Policy, *, max_redirects: int = 5) -> None:
+    def __init__(self, scope: Scope, policy: Policy, *, max_redirects: int = 5,
+                 sesion=None) -> None:
         self.scope = scope
         self.policy = policy
         self.max_redirects = max_redirects
+        # Con sesión, las sondas ven lo mismo que un usuario dentro: la portada
+        # de verdad, las cookies que pone tras el login, las cabeceras de las
+        # páginas privadas. Sin ella, las comprobaciones pasivas analizaban la
+        # redirección al formulario de acceso y nada más.
+        self.sesion = sesion
         self._semaphore = asyncio.Semaphore(policy.concurrency)
 
     def _client(self) -> httpx.AsyncClient:
@@ -138,7 +144,9 @@ class Prober:
             timeout=httpx.Timeout(self.policy.request_timeout),
             limits=httpx.Limits(max_connections=self.policy.concurrency),
             # Las cabeceras HTTP deben ser ASCII: el User-Agent va sin acentos.
-            headers={"User-Agent": "crux/0.1 (authorized internal audit)"},
+            headers={"User-Agent": "crux/0.1 (authorized internal audit)",
+                     **(self.sesion.cabeceras if self.sesion is not None else {})},
+            cookies=self.sesion.cookies if self.sesion is not None else None,
         )
 
     async def probe_many(self, urls: Sequence[str]) -> list[ProbeResult]:

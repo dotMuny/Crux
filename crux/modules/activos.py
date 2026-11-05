@@ -42,7 +42,7 @@ def _sustituir(url: str, parametro: str, valor: str) -> str:
 
 
 async def comprobar_redireccion_abierta(
-    scope: Scope, policy: Policy, endpoints: Sequence[dict],
+    scope: Scope, policy: Policy, endpoints: Sequence[dict], *, sesion=None,
 ) -> list[Finding]:
     """Sustituye los parámetros de destino y mira a dónde manda el servidor.
 
@@ -69,7 +69,11 @@ async def comprobar_redireccion_abierta(
     async with httpx.AsyncClient(
         trust_env=False, follow_redirects=False, verify=False,
         timeout=httpx.Timeout(policy.request_timeout),
-        headers={"User-Agent": "crux/0.1 (authorized internal audit)"},
+        headers={"User-Agent": "crux/0.1 (authorized internal audit)",
+                 **(sesion.cabeceras if sesion is not None else {})},
+        # La mitad de los parámetros de redirección viven detrás del login: el
+        # «volver a» de después de una acción, el «siguiente» de un asistente.
+        cookies=sesion.cookies if sesion is not None else None,
     ) as cliente:
         semaforo = asyncio.Semaphore(policy.concurrency)
 

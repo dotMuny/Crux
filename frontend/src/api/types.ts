@@ -74,6 +74,9 @@ export interface Credenciales {
   cabeceras?: Record<string, string>
   cookies?: Record<string, string>
   senal_de_exito?: string | null
+  // Keycloak, ADFS… Solo hace falta si la aplicación salta a él con
+  // JavaScript; una redirección se descubre sola.
+  proveedor_identidad?: string | null
 }
 
 export interface Rol {
@@ -158,6 +161,16 @@ export interface Metricas {
   }
   cobertura: {
     origenes?: string[]; comprobaciones?: string[]
+    // Con qué sesión se hizo el escaneo. Nombres y estado, nunca valores.
+    sesion?: {
+      nombre: string; autenticada: boolean; verificada: boolean
+      proveedor: string; motivo: string
+      cookies: string[]; cabeceras: string[]
+      comprobacion: { url?: string; sin_sesion?: number; con_sesion?: number }
+      renovaciones?: number
+      perdidas?: { fase: string; que: string }[]
+      roles?: { nombre: string; rol: string; proveedor: string }[]
+    } | null
     conteo?: {
       producidos: number; colapsados_por_huella: number
       absorbidos_por_otro_mejor: number; guardados: number; descuadre?: number

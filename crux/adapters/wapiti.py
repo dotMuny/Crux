@@ -111,6 +111,7 @@ class WapitiAdapter(Adapter):
             # Nivel 1 de detalle: incluye la petición HTTP de cada hallazgo,
             # que es lo que se muestra como evidencia.
             "--detailed-report", "1",
+            *argumentos_de_sesion(ctx),
         ]
 
     def parse(self, run: ToolRun, ctx: ScanContext) -> Iterable[Finding]:
@@ -182,3 +183,47 @@ def _absoluto(ruta: str, ctx) -> str:
     if not partes.netloc:
         return ruta
     return f"{partes.scheme}://{partes.netloc}" + ("" if ruta.startswith("/") else "/") + ruta
+
+
+# Rutas que cierran la sesión. wapiti recorre por su cuenta, y un solo «salir»
+# deja el resto del escaneo sin autenticar.
+SALIDAS = ("/logout", "/signout", "/salir", "/cerrar-sesion", "/logoff", "/oauth2/sign_out",
+           "/protocol/openid-connect/logout")
+
+
+def argumentos_de_sesion(ctx: ScanContext) -> list[str]:
+    """Cómo darle a wapiti la sesión del escaneo.
+
+    Las cookies van en su fichero JSON (`-c`), que no aparece en `ps`. La
+    cabecera Authorization solo admite `-H`, en la línea de órdenes: es el
+    único sitio donde un token queda a la vista de otros usuarios del equipo,
+    durante lo que dure wapiti. Se acepta porque los tokens de un proveedor
+    como Keycloak caducan en minutos, y se documenta.
+    """
+    import json
+
+    sesion = ctx.sesion
+    if sesion is None:
+        return []
+    argv: list[str] = []
+    if sesion.cookies:
+        tarro: dict = {}
+        for host in ctx.hosts_auditables():
+            # El formato de wapiti: las IP tal cual, los nombres con un punto
+            # delante, como los guarda su propio exportador.
+            clave = host if host.replace(".", "").isdigit() else f".{host}"
+            tarro.setdefault(clave, {}).setdefault("/", {}).update({
+                nombre: {"value": valor, "version": 0, "expires": None,
+                         "secure": False, "port": None}
+                for nombre, valor in sesion.cookies.items()
+            })
+        argv += ["-c", str(ctx.fichero_secreto("wapiti-sesion.json", json.dumps(tarro)))]
+    for nombre, valor in sesion.cabeceras.items():
+        argv += ["-H", f"{nombre}: {valor}"]
+    # Lo que cierra la sesión, fuera. Con la URL entera: `-x` no admite patrones.
+    salidas = [u for u in ctx.urls if any(s in urlsplit(u).path.lower() for s in SALIDAS)]
+    for url in dict.fromkeys(salidas):
+        argv += ["-x", url]
+    for raiz in dict.fromkeys(f"{urlsplit(u).scheme}://{urlsplit(u).netloc}" for u in ctx.urls):
+        argv += ["-x", f"{raiz}/logout"]
+    return argv

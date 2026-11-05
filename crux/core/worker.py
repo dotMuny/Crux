@@ -36,7 +36,7 @@ from .scan import ScanOutcome
 # respuesta de la API, que es exactamente donde una contraseña no debe estar.
 CAMPOS_CREDENCIALES = (
     "url_login", "usuario", "clave", "selector_usuario", "selector_clave",
-    "selector_enviar", "cabeceras", "cookies", "senal_de_exito",
+    "selector_enviar", "cabeceras", "cookies", "senal_de_exito", "proveedor_identidad",
 )
 
 

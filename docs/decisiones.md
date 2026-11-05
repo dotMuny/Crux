@@ -896,3 +896,114 @@ Es el segundo fallo de esta clase que aparece en el propio producto, después
 del de §44, y los dos tenían la misma forma: una protección que se daba por
 puesta y dependía de un detalle —un nombre de fichero, una ruta sin
 resolver— que nadie había mirado.
+
+
+## 48. Entrar es la fase cero, y si no se entra no se escanea
+
+La queja fue exacta: «con usuario y contraseña me sale lo mismo que sin
+ellos». Detrás había cuatro fallos que se sumaban.
+
+**La sesión solo la usaba el crawler.** Sondas, comprobaciones pasivas, nuclei
+y wapiti iban como anónimos aunque el login hubiera ido bien. Ahora el login es
+la fase cero y la sesión llega a todas: las sondas y las comprobaciones propias
+la llevan en su cliente HTTP, el crawler la recibe hecha, nuclei por su fichero
+de secretos y wapiti por su fichero de cookies.
+
+**Un login fallido era silencioso.** Devolvía «no autenticada» sin motivo y el
+escaneo seguía. Ahora se para con `AutenticacionFallida` y un motivo que dice
+qué hacer: credenciales rechazadas —con el texto que dio el proveedor—, segundo
+factor, acción obligatoria pendiente, «Cookie not found», un host fuera del
+alcance. Se prefirió parar a seguir como anónimo con un aviso: un informe hecho
+desde fuera de una aplicación que se pidió auditar desde dentro parece completo,
+y un aviso se pasa por alto.
+
+**Con SSO, los roles se contaminaban.** Todos entraban con el mismo navegador.
+Keycloak deja su propia cookie de sesión, así que el segundo rol pasaba como el
+primero sin ver el formulario y la comparación de permisos salía limpia. Ahora
+cada login usa un navegador recién creado.
+
+**El proveedor de identidad es un sitio al que se va, no uno que se audita.**
+Vive en otro host. Declararlo como host extra lo volvía auditable, y un
+Keycloak corporativo da servicio a cien aplicaciones: auditar una no autoriza a
+escanearlo a él. `Scope` tiene ahora `proveedores_identidad`: se resuelven y se
+congelan como el resto, el aislamiento les da ruta y nombre, pero `allows_host`
+dice que no, incluso si comparten IP con un objetivo. Se rechazan si resuelven
+a una IP pública, como cualquier objetivo.
+
+El proveedor se descubre solo siguiendo la redirección de la URL de acceso,
+antes de congelar el alcance: se lee la cabecera `Location`, sin contactar el
+host. Cuando la redirección la hace JavaScript —keycloak-js— no se puede
+descubrir, y entonces actúa la segunda barrera: el navegador del login arranca
+con el DNS congelado en `--host-resolver-rules`, así que un host no declarado
+no resuelve. El login lo dice con el nombre exacto y el proveedor no recibe ni
+una petición.
+
+**La sesión se comprueba fuera del navegador.** Que el navegador haya entrado
+no basta: lo que importa es que las herramientas puedan usarla. Se pide la misma
+URL con y sin la sesión; si con ella también manda a entrar, no vale, y se dice
+antes de escanear. Una SPA guarda el token en el navegador y no deja cookie: se
+lee la cabecera `Authorization` del registro de red del navegador, y la URL
+donde se usó es la que sirve para comprobarla.
+
+**La sesión se vigila.** Keycloak emite tokens de cinco minutos. Antes de cada
+herramienta se comprueba que la sesión sigue viva, y se vuelve a entrar si no;
+después, si caducó durante la ejecución, queda un hallazgo sobre el propio
+escaneo diciendo qué fase corrió sin autenticar. La heurística de «parece
+desconectado» del crawler solo levanta la sospecha: una ruta que se llama
+`/login` la disparaba con la sesión intacta, volvía a entrar sin motivo y el
+resumen decía «renovada tres veces».
+
+**nuclei compara el dominio con el puerto.** Con `127.0.0.1` en su fichero de
+secretos no mandaba la sesión a `127.0.0.1:8443`, y corría anónimo sin avisar.
+En una intranet, una aplicación en un puerto no estándar es lo normal. Se
+encontró porque se comprobó con una plantilla que solo casa con sesión; el
+fichero lleva ahora el host con y sin puerto.
+
+Las pruebas corren contra `tests/fixtures/keycloak`, que reproduce el flujo de
+Keycloak sin red: formulario en otro host, su cookie de sesión, el código de
+autorización, segundo factor, acciones obligatorias, sesión SSO y una SPA que
+canjea el código en el navegador.
+
+Se validó además contra Keycloak 26.4.7 real (imagen oficial
+`quay.io/keycloak/keycloak:26.4`, digest `sha256:9409c59b…6e007`), con un
+cliente confidencial de servidor y uno público de SPA. Los seis casos —entrar,
+clave mala, segundo factor pendiente, cambio de clave obligatorio, SPA sin
+proveedor declarado y con él— dieron lo mismo que contra el simulado. Con el
+navegador compartido de antes, el segundo rol no llegaba ni a ver el
+formulario: Keycloak lo reconocía como el primero. Y un escaneo con wapiti
+encontró un XSS que solo existe detrás del login, que sin sesión no aparece.
+
+## 49. Mandar a entrar no es una redirección abierta
+
+Un escaneo sin credenciales de una aplicación protegida por Keycloak sacaba dos
+hallazgos falsos, y los sacaría en el informe de cada aplicación con SSO:
+
+- **«Redirección hacia un destino externo controlable»**. El probador ve que la
+  portada responde con un 302 a otro host y lo marca. Pero ese destino lo fija
+  la configuración, no la petición: es la aplicación mandando a un anónimo a
+  autenticarse.
+- **«La aplicación carga recursos de fuera»**. La redirección deja al navegador
+  del crawler en la página de acceso de Keycloak, y sus hojas de estilo se
+  contaban como dependencias de la aplicación.
+
+`es_redireccion_de_acceso` reconoce el baile de autenticación de OAuth 2 y
+OpenID Connect, WS-Federation (ADFS), CAS y SAML. No le basta con que la URL
+tenga forma de proveedor: exige que el parámetro de vuelta apunte a la propia
+aplicación. En SAML la vuelta va dentro de la petición, comprimida, y se
+descomprime para leerla. Una redirección a `https://malo/authorize?client_id=x&
+redirect_uri=https://malo/` sigue siendo una redirección abierta, y se sigue
+marcando: está en las pruebas como control.
+
+El crawler ya no audita los recursos de una página que no es de la aplicación,
+y no cuenta como dependencia hablar con el propio proveedor —el iframe con el
+que keycloak-js comprueba la sesión, el canje del token de una SPA—.
+
+**Lo que se dice en su lugar.** Un informe casi vacío de una aplicación con SSO
+escaneada sin credenciales se lee como «segura», y es lo contrario: no se ha
+podido mirar. Ahora sale un hallazgo informativo, `escaneo-sin-sesion`, que
+nombra el proveedor y pide repetir con un usuario de auditoría. Lo detectan las
+sondas cuando la redirección es HTTP y el crawler cuando la hace JavaScript.
+
+Comprobado contra Keycloak 26.4.7 real, con una aplicación de servidor y una
+SPA: los dos falsos positivos desaparecen en ambas, el aviso aparece en ambas,
+y con sesión no sale.

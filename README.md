@@ -77,15 +77,30 @@ Con autenticación y comparación de roles:
 
 ```bash
 crux scan web https://facturacion.intra.corp/ \
-  --login-url https://facturacion.intra.corp/login \
+  --login-url https://facturacion.intra.corp/ \
   --user analista --password '…' \
   --role luis:user:luis:'…' \
   --role ana:admin:ana:'…' \
   --report informe.html
 ```
 
+La URL de acceso es la de la aplicación **aunque el formulario esté en un
+Keycloak o un ADFS**: Crux sigue la redirección con un navegador real, entra
+donde le manden y vuelve. El proveedor se descubre solo y queda en el alcance
+para entrar, no para auditarlo. Solo hace falta nombrarlo con `--idp` cuando la
+aplicación salta a él con JavaScript, como las que usan keycloak-js; si no se
+nombra, el login lo dice con el host exacto.
+
+La sesión la usan **todas** las fases: sondas, comprobaciones propias, crawler,
+nuclei y wapiti. Si no se consigue entrar, el escaneo **se para** y dice por
+qué —credenciales rechazadas, segundo factor, una acción pendiente en el
+proveedor, un host sin declarar—. No sigue como anónimo: el informe parecería
+completo sin serlo.
+
 Dos `--role` o más activan el análisis de control de acceso. Con uno solo no
-hay nada que comparar y te lo advierte.
+hay nada que comparar y te lo advierte. Cada rol entra en un navegador limpio:
+con un proveedor de SSO, compartirlo hacía que el segundo entrase como el
+primero.
 
 Para una API con token en cabecera:
 
@@ -236,10 +251,11 @@ ruta—. El CLI queda para automatizar, no para el uso diario.
 ofrece también:
 
 - **Sesión**, en los tres modos: formulario (URL de acceso, usuario y
-  contraseña, con selectores CSS si la heurística no acierta), cabecera o JWT,
-  y cookies pegadas a mano —la salida para el SSO, que no automatizamos—. Sin
-  sesión solo se ve lo que la aplicación muestra sin autenticar, que en una
-  aplicación interna es la menor parte.
+  contraseña; vale con Keycloak, ADFS y cualquier proveedor que acabe en un
+  formulario), cabecera o JWT, y cookies pegadas a mano —la salida para el
+  segundo factor y para Kerberos, que no se pueden automatizar—. Sin sesión solo
+  se ve lo que la aplicación muestra sin autenticar, que en una aplicación
+  interna es la menor parte.
 - **Roles a comparar**, uno por fila. Con dos o más se activa el análisis de
   control de acceso; con uno la petición se acepta y te avisa de que no hay
   comparación posible.
@@ -249,7 +265,18 @@ ofrece también:
 Las credenciales viajan del navegador al servidor y se usan en memoria durante
 el escaneo. **No se guardan en la base, no vuelven por la API y no aparecen en
 el informe**: de la sesión queda registrado el modo —«formulario»,
-«cabecera»— y el nombre de cada rol, nunca la credencial.
+«cabecera»—, el nombre de cada rol y de cada cookie, nunca un valor.
+
+El panel dice con qué sesión se hizo cada escaneo y cómo se comprobó —qué
+respondió la aplicación con ella y sin ella—, y si se perdió a mitad. Una
+herramienta que corre con la sesión caducada recorre la aplicación como
+anónima sin saberlo, así que se comprueba antes y después de cada una: si caducó
+se vuelve a entrar, y si no se pudo, el informe lo dice.
+
+Para nuclei y wapiti la sesión va en ficheros que solo lee tu usuario y que se
+borran en cuanto la herramienta termina. La excepción es un token en cabecera
+para wapiti, que solo lo admite en la línea de órdenes: mientras corre, otro
+usuario del equipo podría verlo con `ps`.
 
 ### Aislar la red desde la web
 
@@ -347,17 +374,28 @@ vacío se leería como que la aplicación no responde.
 aislamiento el escaneo funciona igual y el egress cero se sigue comprobando
 herramienta por herramienta: lo que no se puede es imponerlo.
 
-**El crawler no entra en la aplicación.** Si los campos del formulario tienen
-nombres poco habituales, pásalos: por la web, en «el formulario no es el
-habitual»; por CLI, `--selector-usuario` y `--selector-clave`. Si hay SSO
-corporativo, no se automatiza: autentícate tú en el navegador y pega la cookie
-de sesión en el modo «Cookies» (o pásala con `--header`).
+**El escaneo se para con «No se pudo entrar».** El mensaje dice por qué; los
+casos habituales:
+
+- *El acceso lleva a un host que no está en el alcance*: es tu proveedor de
+  identidad y la aplicación salta a él con JavaScript. Decláralo en «Proveedor
+  de identidad» (web) o con `--idp` (CLI).
+- *El proveedor pide un segundo factor* o *exige cambiar la contraseña*: no se
+  puede completar sin una persona. Entra tú una vez, o pide un usuario de
+  auditoría sin segundo factor; si no es posible, autentícate en tu navegador y
+  pega la sesión en el modo «Cookies».
+- *No apareció ningún formulario de acceso*: los campos tienen nombres poco
+  habituales. Pásalos en «El acceso no es el habitual» (web) o con
+  `--selector-usuario` y `--selector-clave` (CLI).
+- *La sesión no funciona fuera del navegador*: la aplicación guarda el token
+  donde no se puede reutilizar. Cópialo de las herramientas de desarrollo de tu
+  navegador y usa el modo «Cabecera».
 
 ---
 
 ## Por qué está hecho así
 
-`docs/decisiones.md` recoge 32 decisiones que no se deducen leyendo el código,
+`docs/decisiones.md` recoge 49 decisiones que no se deducen leyendo el código,
 cada una con su motivo y con la evidencia que la respalda. Están ahí para que
 no se discutan desde cero, y para que quien no esté de acuerdo sepa
 exactamente qué está cambiando.
