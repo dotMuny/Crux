@@ -752,3 +752,47 @@ guardan en su evidencia el User-Agent que de verdad se envió (`audex/0.1`) y
 los marcadores de sonda con el nombre viejo. Cambiarlos sería falsear lo que
 pasó por el cable. Sí se reetiquetó `tasks.tool`, que es metadato del programa
 y no una observación del objetivo.
+
+## 44. La interfaz servía cualquier fichero del equipo
+
+Auto-analizando Crux con Crux apareció esto:
+
+```
+GET http://127.0.0.1:8777///////../../../etc/passwd  →  200, /etc/passwd
+```
+
+La ruta comodín que devuelve la SPA hacía `DIST / ruta` y preguntaba
+`is_file()`. Con `ruta = "../../../etc/passwd"` eso apunta fuera del
+directorio, el fichero existe, y `FileResponse` lo servía tan tranquilo.
+Cualquier página web abierta en el navegador del analista podía leer
+`~/.local/share/crux/crux.db` —con todos los hallazgos de sus clientes— o las
+claves de `~/.ssh`, porque el servidor no exige autenticación por diseño.
+
+**La corrección no filtra patrones.** La tentación es rechazar `..`, y es la
+defensa que siempre se queda corta: viene `%2e%2e%2f`, viene `....//`, viene
+la codificación doble. Lo que se hace es resolver la ruta y comprobar que el
+resultado sigue cayendo dentro del directorio permitido:
+
+```python
+raiz = DIST.resolve()
+candidato = (raiz / ruta).resolve()
+if not candidato.is_relative_to(raiz) or not candidato.is_file():
+    return None
+```
+
+Resolver también sigue los enlaces simbólicos, así que un enlace dentro de
+`dist` que apunte fuera tampoco cuela. Y como Starlette entrega la ruta ya
+descodificada, todas las codificaciones desembocan en la misma comprobación.
+
+**Lo que esto dice del resto.** Se revisaron los demás puntos donde la API
+toca disco: el informe valida el formato contra una lista blanca y recibe el
+identificador como entero, y `/assets` lo sirve `StaticFiles`, que ya hace
+esta comprobación. Era el único sitio, y lo era porque es el único que
+construía una ruta a partir de texto del usuario sin que nadie lo validara.
+
+**Que esto lo encontrara la propia herramienta no es anécdota.** Es el
+argumento de que la invariante de §42 no basta: el escaneo puede ser perfecto
+y el producto seguir teniendo el fallo que busca en los demás.
+`tests/test_travesia_de_rutas.py` prueba ocho vectores contra la aplicación ASGI
+directamente, porque httpx y curl normalizan la ruta antes de enviarla y un
+cliente educado no puede reproducir el vector original.

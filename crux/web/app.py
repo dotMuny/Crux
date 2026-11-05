@@ -42,6 +42,32 @@ CSP = (
 )
 
 
+def fichero_servible(ruta: str) -> Path | None:
+    """El fichero de `dist` que corresponde a esta ruta, o None si no lo hay.
+
+    Comprobar la contención no es opcional: `DIST / ruta` con una ruta como
+    `../../../etc/passwd` apunta fuera del directorio, y `is_file()` responde
+    que sí tan contento. Así se servía /etc/passwd desde la propia interfaz.
+
+    Se resuelve antes de comparar, y se compara contra el `dist` también
+    resuelto, para que un enlace simbólico dentro de dist que apunte fuera
+    tampoco valga. La ruta llega ya descodificada por Starlette, de modo que
+    `%2e%2e%2f` y `....//` acaban en la misma comprobación: no hay que filtrar
+    patrones, que es la defensa que siempre se queda corta.
+    """
+    if not ruta:
+        return None
+    raiz = DIST.resolve()
+    try:
+        candidato = (raiz / ruta).resolve()
+    except (OSError, ValueError, RuntimeError):
+        # ruta inválida, byte nulo o bucle de enlaces simbólicos
+        return None
+    if not candidato.is_relative_to(raiz) or not candidato.is_file():
+        return None
+    return candidato
+
+
 @asynccontextmanager
 async def ciclo(app: FastAPI):
     init_db()
@@ -81,8 +107,8 @@ def create_app() -> FastAPI:
         @app.get("/{ruta:path}", include_in_schema=False)
         async def spa(ruta: str):
             """Todo lo que no sea /api devuelve el index: el enrutado es del cliente."""
-            candidato = DIST / ruta
-            if ruta and candidato.is_file():
+            candidato = fichero_servible(ruta)
+            if candidato is not None:
                 return FileResponse(candidato)
             return FileResponse(DIST / "index.html")
     else:
