@@ -389,6 +389,14 @@ La suite lanza escaneos reales contra una aplicación deliberadamente vulnerable
 .venv/bin/python -m tests.fixtures.vulnapp    # en otra terminal
 ```
 
+Los 81 tests que necesitan ese objetivo llevan la marca `necesita_objetivo` y
+**fallan en rojo** si no responde, en lugar de pasar con cero hallazgos. Los
+otros 179 no lo necesitan:
+
+```bash
+.venv/bin/python -m pytest -m 'not necesita_objetivo' -q
+```
+
 La interfaz solo se compila en la máquina de build:
 
 ```bash

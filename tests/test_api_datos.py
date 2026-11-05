@@ -19,6 +19,7 @@ from crux.core.scan import run_web_scan
 from crux.web.routes.api import router
 
 OBJETIVO = "http://127.0.0.1:8999/"
+pytestmark = pytest.mark.necesita_objetivo  # lanza escaneos reales
 
 
 @pytest.fixture

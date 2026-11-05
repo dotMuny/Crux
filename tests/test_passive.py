@@ -291,6 +291,7 @@ class TestObjetivoAbsoluto:
         assert _absolute("app.intra:443", {}) == "https://app.intra:443"
         assert _absolute("http://ya/absoluta", {}) == "http://ya/absoluta"
 
+    @pytest.mark.necesita_objetivo
     def test_lo_absorbido_no_llega_a_la_base(self, tmp_path):
         """El CLI mostraba 11 hallazgos y la base guardaba 12: _persist seguía
         usando el conjunto previo a la absorción. La web UI lee de la base, así

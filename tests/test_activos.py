@@ -13,6 +13,7 @@ from crux.modules.activos import (
 )
 
 BASE = "http://127.0.0.1:8999"
+pytestmark = pytest.mark.necesita_objetivo  # lanza escaneos reales
 
 
 @pytest.fixture

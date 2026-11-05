@@ -796,3 +796,32 @@ y el producto seguir teniendo el fallo que busca en los demás.
 `tests/test_travesia_de_rutas.py` prueba ocho vectores contra la aplicación ASGI
 directamente, porque httpx y curl normalizan la ruta antes de enviarla y un
 cliente educado no puede reproducir el vector original.
+
+## 45. Un test que no puede fallar no está probando
+
+Verificando el arreglo de §44 saltaron tres tests en rojo, todos por la misma
+razón: la aplicación de pruebas estaba parada. Lo preocupante no fueron esos
+tres, sino los otros setenta y ocho que pasaron en verde en las mismas
+condiciones.
+
+Los tests que lanzan escaneos reales corrían contra un objetivo muerto. No
+encontraban nada, y un escaneo vacío cuadra con cualquier invariante: la
+comprobación de conservación daba 0 producidos y 0 guardados, el diff
+comparaba dos escaneos vacíos y no veía regresiones, el triaje no inventaba
+correcciones porque no había nada que corregir. Verde absoluto sin ejercitar
+un solo detector. Los tres que fallaron lo hicieron por casualidad, porque
+afirmaban un número concreto de hallazgos.
+
+Es la misma clase de fallo que §42 persigue en el producto —algo desaparece y
+nadie lo dice—, pero en el sitio donde más daño hace: la red de seguridad.
+
+**La marca `necesita_objetivo`** la declara quien lanza peticiones reales, y
+un fixture de `tests/conftest.py` comprueba el socket una vez por sesión. Si
+no responde, `pytest.fail` con instrucciones, **no `skip`**: saltar es
+exactamente lo que convierte una comprobación ausente en un verde. Quien no
+quiera levantar nada tiene `pytest -m 'not necesita_objetivo'`, que es una
+decisión explícita y no un silencio.
+
+Se rechazó que la suite levantase la aplicación por su cuenta: arrancar
+procesos desde los tests oculta el acoplamiento en vez de enseñarlo, y la
+petición era que el fallo se viera, no que desapareciera.

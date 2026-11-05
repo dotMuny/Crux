@@ -32,6 +32,7 @@ from crux.core.scan import run_web_scan
 from crux.core.severity import Severity
 
 OBJETIVO = "http://127.0.0.1:8999/"
+pytestmark = pytest.mark.necesita_objetivo  # lanza escaneos reales
 
 
 def contexto(tmp_path, **extra):

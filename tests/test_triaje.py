@@ -17,6 +17,7 @@ from crux.core.scan import run_web_scan
 from crux.core.store import session_scope
 
 OBJETIVO = "http://127.0.0.1:8999/"
+pytestmark = pytest.mark.necesita_objetivo  # lanza escaneos reales
 
 
 def escanear(db, perfil="safe-active", proyecto="p"):

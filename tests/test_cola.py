@@ -10,6 +10,7 @@ import pytest
 from crux.core.queue import ColaDeTrabajos
 
 OBJETIVO = "http://127.0.0.1:8999/"
+pytestmark = pytest.mark.necesita_objetivo  # lanza escaneos reales
 
 
 @pytest.fixture
