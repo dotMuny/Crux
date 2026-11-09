@@ -36,7 +36,7 @@ from ..core.findings import Evidence, EvidenceKind, Finding
 from ..core.policy import Policy
 from ..core.scope import Scope
 from ..core.severity import Confidence, Severity
-from .crawler import Endpoint
+from .crawler import Endpoint, claves_planas
 
 # Dónde publica cada marco su especificación. El orden importa poco: se prueban
 # todas y se queda la primera que sea legible.
@@ -219,7 +219,7 @@ def _cuerpo_de(operacion: dict[str, Any], raiz: dict[str, Any],
             ejemplo = _ejemplo(esquema, raiz)
             if not isinstance(ejemplo, dict):
                 continue
-            claves = [str(k) for k in ejemplo]
+            claves = claves_planas(ejemplo)
             if tipo == "application/json":
                 return json.dumps(ejemplo, ensure_ascii=False), claves, tipo
             from urllib.parse import urlencode
@@ -233,7 +233,7 @@ def _cuerpo_de(operacion: dict[str, Any], raiz: dict[str, Any],
         ejemplo = _ejemplo(parametro.get("schema") or {}, raiz)
         if isinstance(ejemplo, dict):
             return (json.dumps(ejemplo, ensure_ascii=False),
-                    [str(k) for k in ejemplo], "application/json")
+                    claves_planas(ejemplo), "application/json")
     return "", [], ""
 
 
@@ -458,7 +458,8 @@ async def _alcanzable_sin_sesion(policy: Policy, url: str) -> bool:
 # ── Lo que se cuenta en el informe ──────────────────────────────────────────
 
 
-def hallazgos(espec: Especificacion, *, vistos_por_el_crawler: int = 0) -> list[Finding]:
+def hallazgos(espec: Especificacion, *, vistos_por_el_crawler: int = 0,
+              policy: Policy | None = None) -> list[Finding]:
     """Qué se analizó de la API, y lo que la propia especificación delata."""
     salida: list[Finding] = []
     detalle = [f"Especificación: {espec.origen} ({espec.formato})."]
@@ -474,6 +475,11 @@ def hallazgos(espec: Especificacion, *, vistos_por_el_crawler: int = 0) -> list[
             f" Se dejaron fuera {espec.omitidos_destructivos} operaciones con métodos "
             "que modifican o borran (PUT, PATCH, DELETE): ejecutarlas en una aplicación "
             "en uso cambia datos de verdad. El perfil agresivo las incluye.")
+    if policy is not None and not policy.allow_injection:
+        detalle.append(
+            f" Con el perfil «{policy.profile}», la especificación la prueba wapiti con "
+            "sus módulos de inyección; el fuzzing de nuclei sobre ella no corre, porque "
+            "fuzzear es inyectar. El perfil agresivo lo añade.")
 
     salida.append(Finding(
         source="crux", check_id="api-analizada",

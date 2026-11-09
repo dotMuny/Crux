@@ -139,6 +139,45 @@ Tres cosas que conviene saber:
   campos que lo parecen —`password`, `token`, `clave`, `cvv`…— se sustituyen
   por `***` antes de que nada toque el disco.
 
+**Autorización, operación por operación.** Con dos `--role` o más, cada
+operación de la API se repite con cada sesión y se comparan las respuestas. Se
+afirma lo que se puede afirmar sin conocer la política de acceso:
+
+- Una operación que devuelve lo mismo a un anónimo que a un usuario. En rutas
+  con identificador de recurso —`/api/facturas/1001`— eso basta: una factura no
+  es pública porque esté enlazada. En las demás hace falta otra señal, porque
+  una API tiene operaciones públicas a propósito; la señal es que la operación
+  conteste **cosas distintas a cada usuario**, porque entonces lo que recibió
+  el anónimo es la vista de alguien.
+- Una ruta que declara privilegio en su propio nombre —`/admin/…`, `/export/…`—
+  y responde igual a los dos roles.
+- Una ruta que se protege para leer y acepta escribir: si a esa sesión se le
+  niega el `GET`, la aplicación sabe que no tiene por qué entrar, y que le
+  acepte un `PUT` en la misma ruta es el control puesto en un sitio y olvidado
+  en el otro.
+
+Las operaciones de escritura solo se repiten con el perfil agresivo —un `POST`
+crea algo de verdad, una vez por cada sesión— y `DELETE` no se repite con
+ningún perfil. Lo que no se comparó, el informe lo dice.
+
+**GraphQL.** Un endpoint y cien operaciones detrás: para wapiti y nuclei eso es
+un POST con un campo de texto llamado `query`, y ahí se acaba el análisis. Crux
+lo busca por lo que vio el navegador y por las rutas habituales, y entonces:
+
+- pide el esquema, y si la introspección está abierta lo dice y además usa la
+  lista de operaciones y argumentos que le acaban de dar;
+- si está cerrada, prueba el atajo conocido: con las sugerencias de campo
+  activadas, el error de un campo mal escrito dice cómo se llamaba de verdad;
+- comprueba si responde sin sesión y si acepta lotes de consultas en una sola
+  petición, que es como se saltan los límites de intentos;
+- prueba los argumentos de texto de las **consultas** buscando el error del
+  motor de base de datos. Las mutaciones no se tocan: cambian datos.
+
+El fuzzing a fondo de cada argumento de GraphQL no lo hace ninguna herramienta
+instalada, y aquí no se escribe un fuzzer propio. Lo que se hace en su lugar es
+dejar el inventario completo en el informe —cada operación con sus argumentos—
+para que el analista vaya a mano a lo que le interese.
+
 Con `--sin-api` se apaga todo esto y el escaneo se queda en lo que vea el
 navegador.
 
@@ -435,7 +474,7 @@ casos habituales:
 
 ## Por qué está hecho así
 
-`docs/decisiones.md` recoge 50 decisiones que no se deducen leyendo el código,
+`docs/decisiones.md` recoge 51 decisiones que no se deducen leyendo el código,
 cada una con su motivo y con la evidencia que la respalda. Están ahí para que
 no se discutan desde cero, y para que quien no esté de acuerdo sepa
 exactamente qué está cambiando.

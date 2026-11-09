@@ -71,6 +71,35 @@ def _tachar(valor: Any) -> Any:
     return valor
 
 
+# Hasta dónde se baja en un cuerpo anidado, y cuántos campos se apuntan. Un
+# JSON de tres niveles con listas dentro da cientos de rutas, y a partir de un
+# punto dejan de ser superficie y pasan a ser ruido.
+PROFUNDIDAD_MAXIMA = 3
+CAMPOS_MAXIMOS = 60
+
+
+def claves_planas(valor: Any, prefijo: str = "", profundidad: int = 0) -> list[str]:
+    """Los campos de un cuerpo, con su camino: `filtro.cliente`, `lineas[].sku`.
+
+    Un `{"filtro": {"cliente": "…"}}` tiene un campo, no cero, y contarlo como
+    uno solo —el de primer nivel— decía que esa llamada tenía un parámetro
+    cuando en realidad el que importa está dentro.
+    """
+    if profundidad > PROFUNDIDAD_MAXIMA:
+        return []
+    claves: list[str] = []
+    if isinstance(valor, dict):
+        for nombre, dentro in valor.items():
+            camino = f"{prefijo}.{nombre}" if prefijo else str(nombre)
+            claves.append(camino)
+            claves.extend(claves_planas(dentro, camino, profundidad + 1))
+    elif isinstance(valor, list) and valor:
+        # De una lista se mira el primer elemento: en una API los demás tienen
+        # la misma forma.
+        claves.extend(claves_planas(valor[0], f"{prefijo}[]", profundidad + 1))
+    return claves[:CAMPOS_MAXIMOS]
+
+
 def leer_cuerpo(cuerpo: str, tipo_contenido: str) -> tuple[list[str], str]:
     """Las claves que lleva un cuerpo de petición, y el cuerpo ya tachado.
 
@@ -91,13 +120,7 @@ def leer_cuerpo(cuerpo: str, tipo_contenido: str) -> tuple[list[str], str]:
             datos = json.loads(cuerpo)
         except ValueError:
             return [], ""
-        if isinstance(datos, dict):
-            claves = [str(k) for k in datos]
-        elif isinstance(datos, list) and datos and isinstance(datos[0], dict):
-            # Una lista de objetos: los parámetros son los del primero.
-            claves = [str(k) for k in datos[0]]
-        else:
-            claves = []
+        claves = claves_planas(datos) if isinstance(datos, (dict, list)) else []
         return claves, json.dumps(_tachar(datos), ensure_ascii=False)
 
     if "x-www-form-urlencoded" in tipo or ("=" in cuerpo and "\n" not in cuerpo):

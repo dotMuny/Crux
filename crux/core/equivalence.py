@@ -44,6 +44,7 @@ SOURCE_RANK: Final[dict[str, int]] = {
     "passive": 30,
     "authz": 30,
     "jwt": 30,
+    "graphql": 30,
     "probe": 20,
     "gitleaks": 14,   # para un secreto, su veredicto es más fiable que un patrón
     "semgrep": 12,

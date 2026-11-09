@@ -9,6 +9,7 @@ from __future__ import annotations
 import base64
 import hmac
 import json
+import re
 import sqlite3
 from hashlib import sha256
 
@@ -36,7 +37,7 @@ EXPECTED_FINDINGS: dict[str, str] = {
     "jwt-sin-caducidad": "El JWT emitido no incluye exp",
     "jwt-claims-sensibles": "El JWT lleva la contraseña en el payload",
     "api-sql-injection": "POST /api/buscar concatena el campo «q» del cuerpo JSON",
-    "api-sin-autorizacion": "GET /api/facturas devuelve las facturas de todos",
+    "api-sin-autorizacion": "GET /api/facturas/<id> entrega cualquier factura sin sesión",
 }
 
 # La especificación que publica la aplicación. Existe para que los tests
@@ -64,6 +65,11 @@ OPENAPI: dict = {
             },
         },
         "/api/facturas/{factura_id}": {
+            "get": {
+                "summary": "Una factura",
+                "parameters": [{"name": "factura_id", "in": "path",
+                                "schema": {"type": "integer", "example": 1001}}],
+            },
             "delete": {
                 "summary": "Borrar una factura",
                 "parameters": [{"name": "factura_id", "in": "path",
@@ -85,6 +91,54 @@ USUARIOS: dict[str, tuple[str, str, int]] = {
 # firmaba con uno y se verificaba con otro, así que ni los tokens
 # legítimos pasaban. Un fallo plantado tiene que ser realista.
 _SECRET = b"secret"
+
+
+# Esquema que entrega la introspección. Con la forma exacta que devuelve un
+# servidor GraphQL, porque es lo que el módulo tiene que saber leer.
+_TIPO_FACTURA = {
+    "name": "Factura", "kind": "OBJECT",
+    "fields": [
+        {"name": "id", "args": [], "type": {"name": "ID", "kind": "SCALAR"}},
+        {"name": "total", "args": [], "type": {"name": "String", "kind": "SCALAR"}},
+    ],
+}
+ESQUEMA_GRAPHQL: dict = {
+    "queryType": {"name": "Query"},
+    "mutationType": {"name": "Mutation"},
+    "types": [
+        _TIPO_FACTURA,
+        {
+            "name": "Query", "kind": "OBJECT",
+            "fields": [
+                {
+                    "name": "facturas",
+                    "args": [{"name": "cliente",
+                              "type": {"name": "String", "kind": "SCALAR",
+                                       "ofType": None}}],
+                    "type": {"name": None, "kind": "LIST",
+                             "ofType": dict(_TIPO_FACTURA, kind="OBJECT")},
+                },
+                {
+                    "name": "usuario",
+                    "args": [{"name": "id", "type": {"name": "ID", "kind": "SCALAR",
+                                                     "ofType": None}}],
+                    "type": {"name": "String", "kind": "SCALAR", "ofType": None},
+                },
+            ],
+        },
+        {
+            "name": "Mutation", "kind": "OBJECT",
+            "fields": [
+                {
+                    "name": "borrarFactura",
+                    "args": [{"name": "id", "type": {"name": "ID", "kind": "SCALAR",
+                                                     "ofType": None}}],
+                    "type": {"name": "Boolean", "kind": "SCALAR", "ofType": None},
+                },
+            ],
+        },
+    ],
+}
 
 
 def _db() -> sqlite3.Connection:
@@ -296,6 +350,26 @@ def create_app() -> Flask:
             return make_response(jsonify({"error": "firma inválida"}), 401)
         return make_response(jsonify({"user": payload, "verified": True}))
 
+    @app.route("/graphql", methods=["POST"])
+    def graphql() -> Response:
+        # graphql-introspeccion-abierta, graphql-lotes-permitidos y
+        # graphql-inyeccion-sql, los tres a propósito. El resolutor es de
+        # juguete —una expresión regular, no un analizador— pero el formato de
+        # las respuestas y de los errores es el de un servidor de verdad, que
+        # es lo que el módulo tiene que entender.
+        cuerpo = request.get_json(silent=True)
+        if isinstance(cuerpo, list):
+            return make_response(jsonify([_resolver_graphql(c) for c in cuerpo]))
+        return make_response(jsonify(_resolver_graphql(cuerpo or {})))
+
+    @app.route("/panel-graphql")
+    def panel_graphql() -> Response:
+        return make_response("""<!doctype html><html><head><title>Panel GraphQL</title>
+</head><body><h1>Facturas</h1><script>
+fetch("/graphql", {method: "POST", headers: {"Content-Type": "application/json"},
+  body: JSON.stringify({query: '{ facturas(cliente: "ana") { id total } }'})});
+</script></body></html>""")
+
     @app.route("/openapi.json")
     def openapi() -> Response:
         return make_response(jsonify(OPENAPI))
@@ -334,6 +408,21 @@ def create_app() -> Flask:
                 "query": consulta,
             }), 500)
         return make_response(jsonify([dict(f) for f in filas]))
+
+    @app.route("/api/facturas/<int:factura_id>")
+    def api_factura(factura_id: int) -> Response:
+        # api-sin-autorizacion: entrega la factura a quien la pida, sin mirar
+        # la sesión ni de quién es. Es el primer riesgo de la lista de API de
+        # OWASP, y en la URL hay un identificador: por eso se detecta.
+        conexion = _db()
+        conexion.row_factory = sqlite3.Row
+        fila = conexion.execute(
+            "SELECT i.id, u.name AS cliente, i.total FROM invoices i "
+            "JOIN users u ON u.id = i.owner_id WHERE i.id = ?", (factura_id,)
+        ).fetchone()
+        if fila is None:
+            return make_response(jsonify({"error": "no existe"}), 404)
+        return make_response(jsonify(dict(fila)))
 
     @app.route("/api/facturas/<int:factura_id>", methods=["DELETE"])
     def api_borrar(factura_id: int) -> Response:
@@ -408,6 +497,37 @@ fetch("/api/buscar", {method: "POST", headers: {"Content-Type": "application/jso
                         mimetype="text/plain")
 
     return app
+
+
+def _resolver_graphql(peticion: dict) -> dict:
+    """Resolutor mínimo: lo justo para que el módulo tenga algo real que leer."""
+    consulta = str(peticion.get("query") or "")
+    if "__schema" in consulta:
+        return {"data": {"__schema": ESQUEMA_GRAPHQL}}
+    if "__typename" in consulta:
+        return {"data": {"__typename": "Query"}}
+
+    llamada = re.search(r"(\w+)\s*\(\s*(\w+)\s*:\s*\"([^\"]*)\"", consulta)
+    campo = llamada.group(1) if llamada else (
+        (re.search(r"\{\s*(\w+)", consulta) or [None, ""])[1])
+    if campo == "facturas":
+        valor = llamada.group(3) if llamada else ""
+        conexion = _db()
+        sentencia = ("SELECT i.id, i.total FROM invoices i JOIN users u "
+                     f"ON u.id = i.owner_id WHERE u.name = '{valor}'")
+        try:
+            filas = conexion.execute(sentencia).fetchall()
+        except sqlite3.Error as exc:
+            # El error del motor, con el nombre de la excepción, como lo
+            # devuelve un resolutor que no captura nada.
+            return {"errors": [{"message": f"{type(exc).__module__}."
+                                           f"{type(exc).__name__}: {exc}"}]}
+        return {"data": {"facturas": [{"id": f[0], "total": f[1]} for f in filas]}}
+    if campo == "usuario":
+        return {"data": {"usuario": "ana"}}
+    # graphql-sugerencias-de-campo: el error dice cómo se llamaba de verdad.
+    return {"errors": [{"message": f'Cannot query field "{campo}" on type "Query". '
+                                   'Did you mean "facturas" or "usuario"?'}]}
 
 
 def _b64d(data: str) -> bytes:

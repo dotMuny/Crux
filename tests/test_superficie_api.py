@@ -187,7 +187,7 @@ class TestCuerpoDeLaPeticion:
         claves, cuerpo = leer_cuerpo(
             '{"usuario": "ana", "password": "s3creto", "datos": {"token": "abc"}}',
             "application/json")
-        assert claves == ["usuario", "password", "datos"]
+        assert claves == ["usuario", "password", "datos", "datos.token"]
         guardado = json.loads(cuerpo)
         assert guardado["usuario"] == "ana"
         assert guardado["password"] == "***"
@@ -337,3 +337,32 @@ class TestContraLaAplicacionDePruebas:
         assert inyecciones, "no se llegó al parámetro del cuerpo del POST"
         assert any(f.param == "q" for f in inyecciones)
         assert any(f.check_id == "api-analizada" for f in resultado.findings)
+
+    def test_la_autorizacion_de_la_api_se_compara_por_operacion(self, tmp_path):
+        """`GET /api/facturas/1001` entrega una factura a cualquiera.
+
+        Es el primer riesgo de la lista de API de OWASP, y la ruta viene de la
+        especificación: sin leerla, el escaneo no sabía que existía.
+        """
+        import asyncio
+
+        from crux.core.scan import run_web_scan
+        from crux.modules.auth import Credenciales
+
+        def credencial(usuario: str, clave: str) -> Credenciales:
+            return Credenciales(url_login=f"{BASE}/login",
+                                usuario=usuario, clave=clave)
+
+        resultado = asyncio.run(run_web_scan(
+            [f"{BASE}/"], profile="safe-active", project_name="authz-api",
+            db=tmp_path / "authz.db", only=[],
+            credenciales=credencial("ana", "Primavera2026"),
+            roles=[("luis", "user", credencial("luis", "luis123")),
+                   ("ana", "admin", credencial("ana", "Primavera2026"))],
+        ))
+        ids = {f.check_id for f in resultado.findings}
+        de_api = [f for f in resultado.findings
+                  if f.check_id == "acceso-sin-autenticar" and "/api/" in f.target]
+        assert de_api, "la operación de la API no se comparó entre sesiones"
+        # Y se dice qué quedó sin comprobar: el DELETE no se repite nunca.
+        assert "autorizacion-no-comprobada" in ids

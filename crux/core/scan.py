@@ -26,11 +26,22 @@ from sqlalchemy.orm import Session
 
 from ..adapters import all_adapters
 from ..adapters.base import ScanContext
-from ..modules import activos, api as api_mod, jwt as jwt_mod, passive
+from ..modules import (
+    activos,
+    api as api_mod,
+    graphql as graphql_mod,
+    jwt as jwt_mod,
+    passive,
+)
 from ..modules.auth import (
     AutenticacionFallida, Credenciales, Sesion, construir_alcance, entrar, sigue_viva,
 )
-from ..modules.authz import ComparadorDeRoles, comprobar_fijacion_de_sesion
+from ..modules.authz import (
+    ComparadorDeRoles,
+    Operacion,
+    aviso_de_operaciones_omitidas,
+    comprobar_fijacion_de_sesion,
+)
 from ..modules.crawler import Crawler
 from ..modules.probe import ProbeResult, Prober
 from . import paths
@@ -322,6 +333,17 @@ async def run_web_scan(
                         task["detail"] = espec.resumen
                         cobertura_origenes.add("api")
                         ruta_especificacion = str(_guardar_especificacion(workdir, espec))
+
+        # ── Fase 3.6: GraphQL, donde un endpoint son cien operaciones ─────
+        if con_api:
+            progress("graphql", "buscando GraphQL", 0.52)
+            with _task(db, scan_id, "graphql", "crux") as task:
+                servicio = await _fase_graphql(scope, policy, outcome, crawl, sesion)
+                if servicio is None:
+                    task["detail"] = "no hay GraphQL"
+                else:
+                    task["detail"] = servicio.resumen
+                    cobertura_origenes.add("graphql")
 
         # ── Fase 4: comprobaciones que necesitan el recorrido ─────────────
         if crawl is not None and policy.allow_active_probes:
@@ -971,8 +993,36 @@ async def _fase_api(scope: Scope, policy: Policy, outcome: ScanOutcome, crawl,
             if endpoint.clave not in conocidos:
                 conocidos.add(endpoint.clave)
                 crawl.endpoints.append(endpoint)
-    outcome.findings.extend(api_mod.hallazgos(espec, vistos_por_el_crawler=vistos))
+    outcome.findings.extend(
+        api_mod.hallazgos(espec, vistos_por_el_crawler=vistos, policy=policy))
     return espec
+
+
+async def _fase_graphql(scope: Scope, policy: Policy, outcome: ScanOutcome, crawl,
+                        sesion: Sesion | None) -> graphql_mod.Servicio | None:
+    """Busca el endpoint GraphQL, lo inventaría y prueba sus argumentos.
+
+    Para el resto del escaneo, GraphQL es un POST con un campo de texto llamado
+    «query»: ninguna herramienta llega a las operaciones que hay dentro.
+    """
+    bases = [p.final_url for p in outcome.probes if p.alive]
+    # Lo que el navegador vio: una llamada cuyo cuerpo lleva «query», o una
+    # ruta que se llama como se llaman las de GraphQL.
+    vistos = [
+        e.url for e in (crawl.api if crawl is not None else [])
+        if "query" in e.params_cuerpo or "graphql" in urlsplit(e.url).path.lower()
+    ]
+    servicio = await graphql_mod.descubrir(scope, policy, bases, sesion=sesion,
+                                           vistos=list(dict.fromkeys(vistos)))
+    if servicio is None:
+        return None
+    encontrados, sin_probar = await graphql_mod.probar_argumentos(
+        servicio, policy, sesion=sesion)
+    outcome.findings.extend(encontrados)
+    outcome.findings.extend(
+        graphql_mod.hallazgos(servicio, argumentos_sin_probar=sin_probar,
+                              policy=policy))
+    return servicio
 
 
 def _guardar_especificacion(workdir: Path, espec: api_mod.Especificacion) -> Path:
@@ -1052,8 +1102,12 @@ async def _fase_authz(scope: Scope, policy: Policy, crawl,
         return []
 
     comparador = ComparadorDeRoles(scope, policy, sesiones)
-    urls = crawl.urls[: policy.crawl_max_pages]
-    comparaciones = await comparador.comparar(urls)
+    tope = policy.crawl_max_pages
+    urls = crawl.urls[:tope]
+    # Las páginas se comparan por URL; las operaciones de la API, más abajo y
+    # con su método, porque ahí la misma ruta son varias operaciones.
+    paginas = [e.url for e in crawl.endpoints if not e.es_api][:tope]
+    comparaciones = await comparador.comparar(paginas)
 
     # Lo que la aplicación publica por su cuenta no es un fallo de acceso.
     publicas = [c.url for c in comparaciones]
@@ -1061,7 +1115,25 @@ async def _fase_authz(scope: Scope, policy: Policy, crawl,
                 if (r := c.respuestas.get("anónima")) is not None and r.correcta]
 
     hallazgos = comparador.evaluar(comparaciones, publicas=publicas)
+    # El barrido de identificadores sí mira también la API: es donde vive.
     hallazgos += await comparador.buscar_idor(urls, anonimamente_legibles=anonimas)
+
+    operaciones = [
+        Operacion(url=e.url, metodo=e.metodo, cuerpo=e.cuerpo,
+                  tipo_contenido=e.tipo_contenido)
+        for e in crawl.api
+    ][:tope]
+    if operaciones:
+        comparables = comparador.operaciones_comparables(operaciones)
+        por_operacion = await comparador.comparar_operaciones(comparables)
+        # Las mismas reglas que para las páginas: lo que la aplicación publica
+        # no cuenta, pero una ruta con identificador de recurso nunca es
+        # pública. `evaluar_api` se ocupa de las demás.
+        hallazgos += comparador.evaluar(
+            por_operacion, publicas=[c.url for c in por_operacion])
+        hallazgos += comparador.evaluar_api(por_operacion)
+        hallazgos += comparador.evaluar_metodos(por_operacion)
+        hallazgos += aviso_de_operaciones_omitidas(operaciones, comparables, policy)
     objetivo = next((e.raw for e in scope.entries if e.kind == "url"), "")
     for sesion in sesiones:
         hallazgos += comprobar_fijacion_de_sesion(sesion, objetivo)

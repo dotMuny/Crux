@@ -1071,3 +1071,81 @@ hubo que arreglar el fixture: devolvía el error de SQL con `str(exc)` a secas, 
 sin el nombre de la excepción ningún escáner reconoce el motor —la lista de
 patrones de wapiti lleva `sqlite3.OperationalError`, no «unrecognized token»—.
 Un fallo plantado que ninguna herramienta puede reconocer no demuestra nada.
+
+## 51. Autorización por operación, y GraphQL
+
+Lo que faltaba después de poder ver la API era poder decir algo sobre ella.
+
+**La comparación de roles iba por URL, y en una API la URL no basta.** La misma
+ruta son varias operaciones con permisos distintos: leer un pedido y borrarlo
+no se autorizan igual. Ahora se comparan operaciones —método, cuerpo y tipo de
+contenido—, y el método sale en el hallazgo, porque «la ruta /api/x responde
+igual a los dos roles» no dice qué se probó.
+
+**Las de escritura no se repiten sin permiso.** Comparar es repetir la misma
+petición con cada sesión; con un `POST` eso significa crear algo una vez por
+sesión en una aplicación en uso. Solo con el perfil que autoriza métodos
+destructivos. Y `DELETE` no se compara con ninguno: la petición se repetiría
+también con la sesión con privilegio, y entonces el dato desaparece de verdad.
+Lo que queda sin comparar sale en el informe con su motivo, porque un informe
+sin fallos de autorización en las escrituras se lee igual si están bien que si
+no se miraron.
+
+**Lo público a propósito, en una API, no se distingue igual que en una web.** La
+regla de siempre —si el crawler anónimo llegó ahí siguiendo enlaces, la
+aplicación lo publica— no sirve: una API no tiene portada, pero sí tiene
+comprobaciones de vida y endpoints de versión que contestan a todo el mundo. El
+discriminante que se usa es si la operación **devuelve algo distinto a cada
+usuario**: si a dos roles les contesta cosas distintas está sirviendo datos de
+alguien, y que el anónimo reciba lo mismo que uno de ellos significa que recibió
+su vista. Si a los dos les contesta lo mismo, es información pública y se calla.
+Con un solo rol no hay con qué comparar: se descartan por nombre las que suelen
+ser públicas y el resto se marca como tentativo, que es exactamente lo que se
+sabe. Las rutas con identificador de recurso las sigue llevando la regla de
+siempre, que ya era rigurosa para ese caso y no se duplica.
+
+**Cuarto caso que se puede afirmar: el control puesto en un método y no en el
+otro.** Si a una sesión se le niega el `GET` de una ruta, la aplicación sabe que
+no tiene por qué entrar; que entonces le acepte un `PUT` en la misma ruta es un
+control que se aplicó en un sitio y se olvidó en el otro —el decorador en el
+manejador de lectura y no en el de escritura—. La dirección es la mitad del
+rigor: lo contrario, leer permitido y escribir denegado, es el comportamiento
+correcto y aparecería en todas las APIs del mundo.
+
+De paso, un falso positivo que llevaba ahí desde el principio: `/.git/config`
+casa con el patrón de ruta privilegiada por la palabra «config», así que
+respondía igual a los dos roles y salía como autorización rota. Un fichero de un
+directorio oculto no es un fallo de permisos: es un fichero que no debería
+servirse, y para eso ya hay un hallazgo propio.
+
+**GraphQL no lo cubre ninguna herramienta instalada.** Para wapiti y nuclei,
+`POST /graphql` es un campo de texto llamado `query`. Lo prueban como tal, no
+encuentran nada, y la aplicación sale limpia. Por eso hay módulo propio: busca
+el endpoint —por lo que vio el navegador, o probando las rutas habituales con
+una consulta que no pide ningún dato—, pide el esquema, y con él tiene la lista
+de operaciones y argumentos sin adivinar nada. Si la introspección está cerrada
+se prueba el atajo conocido: con las sugerencias de campo activadas, el error de
+un campo mal escrito dice cómo se llamaba de verdad, y el esquema se reconstruye
+preguntando. Se comprueba además si responde sin sesión y si acepta lotes de
+consultas en una petición, que es como se saltan los límites de intentos de
+acceso o de código de un segundo factor.
+
+**De los argumentos se prueba lo que se puede afirmar.** Comilla en los
+argumentos de texto de las consultas, y hallazgo solo si vuelve el error del
+motor: si la base contesta con su propio mensaje, la entrada llegó hasta la
+consulta sin pasar por ningún parámetro. Solo consultas, nunca mutaciones.
+Construir la consulta exige leer el esquema de verdad —pedir un objeto sin decir
+qué campos se quieren es un error de sintaxis, así que hay que sacar un campo
+escalar del tipo que devuelve cada operación, atravesando `NON_NULL` y `LIST`—.
+
+Lo que **no** se hace es un fuzzer de GraphQL. Este proyecto no escribe fuzzers
+—por eso están wapiti y nuclei—, y escribir uno a medias daría la falsa
+sensación de haber mirado. En su lugar, el inventario completo va al informe:
+cada consulta y cada mutación con sus argumentos y tipos, para que quien audita
+vaya a mano a lo que importe. Un informe que dice «esto es lo que hay y esto es
+lo que miré» vale más que uno que calla las dos cosas.
+
+Comprobado contra la aplicación de pruebas, que ahora tiene un GraphQL con
+introspección abierta, sugerencias de campo, lotes permitidos y una inyección en
+el argumento de una consulta, y una ruta de API que entrega cualquier factura a
+quien la pida.

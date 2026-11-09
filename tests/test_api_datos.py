@@ -77,8 +77,12 @@ def test_cada_nodo_trae_su_detalle(cliente):
 
     por_tipo = {n["data"]["tipo"]: n["data"] for n in datos["nodes"]}
     assert {"host", "servicio", "ruta", "hallazgo"} <= set(por_tipo)
-    assert por_tipo["ruta"]["detalle"]["url"].startswith("http")
-    assert por_tipo["ruta"]["detalle"]["status"] is not None
+    rutas = [n["data"] for n in datos["nodes"] if n["data"]["tipo"] == "ruta"]
+    assert all(r["detalle"]["url"].startswith("http") for r in rutas)
+    # Una ruta sondeada trae su estado. Una que está en el grafo solo porque un
+    # hallazgo la nombra —la especificación de la API, el endpoint GraphQL— no se
+    # sondeó, y poner un estado ahí sería inventárselo.
+    assert any(r["detalle"]["status"] is not None for r in rutas)
     hallazgo = por_tipo["hallazgo"]["detalle"]
     assert hallazgo["titulo"] and hallazgo["origen"] and hallazgo["severidad"]
 
