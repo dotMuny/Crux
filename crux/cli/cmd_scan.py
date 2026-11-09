@@ -60,6 +60,12 @@ def scan() -> None:
 @click.option("--role", "roles_crudos", multiple=True, metavar="NOMBRE:ROL:USUARIO:CLAVE",
               help="Rol a comparar para el control de acceso. Hacen falta dos "
                    "para que la comparación diga algo. Repetible.")
+@click.option("--openapi", "especificacion", type=click.Path(exists=True, dir_okay=False,
+                                                             path_type=Path),
+              help="Especificación OpenAPI o Swagger de la API (JSON o YAML). Sin esto "
+                   "se busca en las rutas habituales de la propia aplicación.")
+@click.option("--sin-api", "sin_api", is_flag=True,
+              help="No buscar ni analizar la API: solo lo que vea el navegador.")
 @click.option("--sandbox", is_flag=True,
               help="Ejecuta el escaneo dentro de un namespace de red que solo "
                    "alcanza el alcance declarado. Convierte el egress cero de "
@@ -69,7 +75,8 @@ def scan() -> None:
 @click.option("--no-pdf", is_flag=True, help="No generar el PDF.")
 def scan_web(targets, profile, project, allow_public, extra_hosts, only,
              login_url, usuario, clave, proveedor, selector_usuario, selector_clave,
-             cabeceras, roles_crudos, sandbox, report_path, no_pdf) -> None:
+             cabeceras, roles_crudos, especificacion, sin_api, sandbox,
+             report_path, no_pdf) -> None:
     """Escanea una o varias aplicaciones web internas.
 
     El alcance se confina a redes internas y se congela al arrancar: un objetivo
@@ -127,6 +134,8 @@ def scan_web(targets, profile, project, allow_public, extra_hosts, only,
                     only=only or None,
                     credenciales=credenciales,
                     roles=roles,
+                    con_api=not sin_api,
+                    especificacion=especificacion,
                     on_progress=on_progress,
                 )
             )

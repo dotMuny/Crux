@@ -1007,3 +1007,67 @@ sondas cuando la redirección es HTTP y el crawler cuando la hace JavaScript.
 Comprobado contra Keycloak 26.4.7 real, con una aplicación de servidor y una
 SPA: los dos falsos positivos desaparecen en ambas, el aviso aparece en ambas,
 y con sesión no sale.
+
+## 50. La API que hay por debajo de la interfaz
+
+La queja fue: «no está encontrando nada relevante, debería analizar también la
+API que hay por debajo de las llamadas». Tenía razón, y había tres agujeros.
+
+**El crawler veía las llamadas pero no podía auditarlas.** Leía la API de
+rendimiento del navegador, que enumera cada petición pero no dice ni el método
+ni el cuerpo. Así que `POST /api/buscar` con `{"q": "…"}` se apuntaba como un
+GET sin parámetros: la URL quedaba en el informe y el parámetro —el único que
+tiene esa llamada— no existía para ninguna fase activa. Ahora el crawler
+arranca con el registro de red de Chromium, el mismo que ya se usaba para
+capturar el token de una SPA, y de ahí salen el método, el tipo de contenido y
+el cuerpo. Un endpoint con cuerpo cuenta como endpoint con parámetros, que
+antes era lo que decidía si se probaba o no.
+
+**De los cuerpos se guardan los nombres, no los valores.** El cuerpo de la
+petición de acceso lleva la contraseña en claro, y la superficie del escaneo se
+persiste y se imprime. Los valores de los campos cuyo nombre lo delata
+—`password`, `clave`, `token`, `cvv`, `iban`…— se sustituyen por `***` antes de
+que nada toque el disco. Lo que hace falta para auditar es el nombre del
+parámetro.
+
+**Lo que la interfaz no pulsa, no se ve.** Un recorrido con navegador solo
+descubre las llamadas que la interfaz llega a hacer. Cuando la aplicación
+publica su especificación —OpenAPI 3 o Swagger 2, en una de las quince rutas
+habituales— está la lista entera escrita por quien programó la API: rutas,
+métodos, parámetros y esquemas. Se lee, se convierte en endpoints con un cuerpo
+de ejemplo y se suma a lo que vio el navegador. El analista puede pasar la suya
+con `--openapi` si la aplicación no la publica.
+
+**Las herramientas ya sabían leerla; no se lo estábamos dando.** wapiti la
+recibe con `--swagger`, y además los puntos de arranque de las llamadas que vio
+el navegador con `-s`: su crawler no ejecuta JavaScript, así que en una
+aplicación de una sola página arrancaba en la portada, no veía enlaces y se
+quedaba ahí —eso explica por sí solo buena parte de los informes vacíos—.
+nuclei necesita una ejecución aparte, porque `-im openapi` se aplica al fichero
+de entrada y no cabe en la pasada normal, así que hay un segundo adaptador
+`nuclei-api` que corre solo con el perfil que autoriza inyección: fuzzear es
+inyectar. Los dos ficheros de resultados llevan el nombre del adaptador; con el
+nombre compartido, la segunda pasada habría vuelto a leer los hallazgos de la
+primera.
+
+**La especificación es dato del objetivo, no configuración nuestra.** Declara
+sus propios servidores. Las herramientas sacan los objetivos de ahí —se
+comprobó: nuclei pide exactamente el servidor que declara el fichero—, así que
+pasarles el original sería dejar que un fichero del objetivo decida a quién se
+le mandan cargas de prueba. Se les da una copia con un solo servidor, el del
+alcance, y de los servidores declarados se conserva solo la ruta. Que una
+aplicación interna declare un servidor de fuera se cuenta como hallazgo
+informativo, pero no se toca.
+
+**`PUT`, `PATCH` y `DELETE` solo con el perfil agresivo.** `DELETE
+/pedidos/{id}` está en la especificación de cualquier API; ejecutarlo en la
+aplicación de un cliente borra un pedido de verdad. Se omiten y se dice cuántos.
+
+Comprobado contra la aplicación de pruebas, que ahora publica su especificación
+y tiene una API con una inyección en un campo que solo viaja en el cuerpo de un
+POST: sin esto, cero hallazgos ahí; con esto, `wapiti:sql-injection` y
+`nuclei-api:sqli-error-based` en el parámetro `q`. Para que eso fuera posible
+hubo que arreglar el fixture: devolvía el error de SQL con `str(exc)` a secas, y
+sin el nombre de la excepción ningún escáner reconoce el motor —la lista de
+patrones de wapiti lleva `sqlite3.OperationalError`, no «unrecognized token»—.
+Un fallo plantado que ninguna herramienta puede reconocer no demuestra nada.

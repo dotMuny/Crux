@@ -90,6 +90,24 @@ class ScanContext:
         return list(dict.fromkeys([*propias, *crawled]))
 
     @property
+    def especificacion_api(self) -> Path | None:
+        """La especificación OpenAPI del objetivo, ya saneada, si se encontró.
+
+        Saneada quiere decir con un solo servidor, el del alcance: las
+        herramientas que la leen sacan de ahí los objetivos.
+        """
+        ruta = (self.discovered.get("api") or {}).get("especificacion") or ""
+        if not ruta:
+            return None
+        camino = Path(ruta)
+        return camino if camino.is_file() else None
+
+    @property
+    def endpoints_api(self) -> list[dict[str, Any]]:
+        """Las llamadas de la API, con su método, su cuerpo y sus parámetros."""
+        return list((self.discovered.get("api") or {}).get("endpoints") or [])
+
+    @property
     def raiz(self) -> Path:
         """Raíz del código. Lanza si se pide en un escaneo que no es de código."""
         if self.ruta is None:

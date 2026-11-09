@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -25,7 +26,7 @@ from sqlalchemy.orm import Session
 
 from ..adapters import all_adapters
 from ..adapters.base import ScanContext
-from ..modules import activos, jwt as jwt_mod, passive
+from ..modules import activos, api as api_mod, jwt as jwt_mod, passive
 from ..modules.auth import (
     AutenticacionFallida, Credenciales, Sesion, construir_alcance, entrar, sigue_viva,
 )
@@ -116,6 +117,8 @@ async def run_web_scan(
     credenciales: Credenciales | None = None,
     roles: Sequence[tuple[str, str, Credenciales]] = (),
     con_crawler: bool = True,
+    con_api: bool = True,
+    especificacion: str | Path | None = None,
     on_progress: ProgressFn | None = None,
 ) -> ScanOutcome:
     """Ejecuta un escaneo web completo y lo persiste.
@@ -129,6 +132,11 @@ async def run_web_scan(
     `con_crawler=False` omite el navegador. Cuesta unos segundos por escaneo y
     es lo que más tarda cuando no aporta: en una API sin interfaz, o en los
     tests que comprueban el ciclo de triaje y no la detección.
+
+    `especificacion` es una especificación OpenAPI o Swagger que pasa el
+    analista. Sin ella se busca en las rutas habituales de la aplicación, que
+    es lo que resuelve el caso normal: un escaneo que solo ve la interfaz deja
+    sin auditar la API, que es donde está la lógica. `con_api=False` lo apaga.
     """
     policy = get_policy(profile)
     # Construir el alcance resuelve DNS y rechaza lo que no sea interno: si esto
@@ -290,6 +298,31 @@ async def run_web_scan(
             if sesion is None and crawl.proveedores_vistos and not ya_dicho:
                 outcome.findings.extend(_solo_la_puerta([], crawl.proveedores_vistos))
 
+        # ── Fase 3.5: la API que hay por debajo de la interfaz ────────────
+        # El crawler solo ve las llamadas que la interfaz llega a hacer. La
+        # especificación, cuando la hay, trae la lista entera: rutas, métodos y
+        # parámetros, escritos por quien programó la API.
+        espec = None
+        ruta_especificacion = ""
+        if con_api:
+            progress("api", "buscando la especificación de la API", 0.5)
+            with _task(db, scan_id, "api", "crux") as task:
+                try:
+                    espec = await _fase_api(scope, policy, outcome, crawl,
+                                            sesion, especificacion)
+                except Exception as exc:
+                    # Una especificación ilegible no tumba el escaneo: se dice
+                    # y se sigue con lo que vio el navegador.
+                    task["status"] = RunStatus.FAILED
+                    task["detail"] = f"{type(exc).__name__}: {exc}"
+                else:
+                    if espec is None:
+                        task["detail"] = "sin especificación publicada"
+                    else:
+                        task["detail"] = espec.resumen
+                        cobertura_origenes.add("api")
+                        ruta_especificacion = str(_guardar_especificacion(workdir, espec))
+
         # ── Fase 4: comprobaciones que necesitan el recorrido ─────────────
         if crawl is not None and policy.allow_active_probes:
             progress("jwt", "analizando tokens", 0.55)
@@ -338,11 +371,27 @@ async def run_web_scan(
                 "technologies": sorted(
                     {t for p in outcome.probes if p.alive for t in p.technologies}
                 ),
-                # Endpoints con parámetros: la superficie donde inyectar.
+                # Endpoints con parámetros: la superficie donde inyectar. Van
+                # con método, cuerpo y tipo de contenido, porque en la API los
+                # parámetros están en el cuerpo y sin eso no hay dónde probar.
                 "endpoints": [
-                    {"url": e.url, "metodo": e.metodo, "params": e.params}
+                    {"url": e.url, "metodo": e.metodo, "params": e.params,
+                     "params_cuerpo": e.params_cuerpo, "cuerpo": e.cuerpo,
+                     "tipo_contenido": e.tipo_contenido, "origen": e.origen}
                     for e in (crawl.con_parametros if crawl else [])
                 ],
+                # La API: su especificación ya saneada —un solo servidor, el del
+                # alcance— para las herramientas que la leen ellas mismas.
+                "api": {
+                    "especificacion": ruta_especificacion,
+                    "endpoints": [
+                        {"url": e.url, "metodo": e.metodo, "params": e.params,
+                         "params_cuerpo": e.params_cuerpo, "cuerpo": e.cuerpo,
+                         "tipo_contenido": e.tipo_contenido}
+                        for e in (crawl.api if crawl else
+                                  (espec.endpoints if espec else []))
+                    ],
+                },
             },
         )
         adapters = all_adapters()
@@ -607,6 +656,10 @@ def _superficie(probes, crawl) -> dict[str, Any]:
             "params": list(e.params),
             "origen": e.origen,
             "tipo_contenido": e.tipo_contenido,
+            # Los parámetros del cuerpo son parte de la superficie: en la API
+            # son casi todos. El cuerpo va con los valores sensibles tachados.
+            "params_cuerpo": list(e.params_cuerpo),
+            "cuerpo": e.cuerpo,
         }
         for e in (crawl.endpoints if crawl else [])
     ]
@@ -872,6 +925,69 @@ def _hallazgos_de_crawl(crawl) -> list[Finding]:
                            snippet="\n".join(crawl.fuera_de_alcance[:20]))],
         extra={"destinos": destinos, "urls": crawl.fuera_de_alcance[:50]},
     )]
+
+
+async def _fase_api(scope: Scope, policy: Policy, outcome: ScanOutcome, crawl,
+                    sesion: Sesion | None,
+                    fichero: str | Path | None) -> api_mod.Especificacion | None:
+    """La especificación de la API, interpretada y metida en la superficie.
+
+    Los endpoints que aporta se suman a los del recorrido, sin repetir los que
+    el navegador ya había visto. A partir de ahí son endpoints como cualquier
+    otro: entran en las comprobaciones activas, en la comparación de roles, en
+    la superficie del informe y en lo que reciben las herramientas.
+    """
+    bases = [p.final_url for p in outcome.probes if p.alive]
+    if not bases:
+        bases = [e.raw for e in scope.entries if e.kind == "url"]
+    if not bases:
+        return None
+
+    if fichero:
+        # Una especificación que pasa el analista se interpreta tal cual. Si no
+        # se puede leer, se lanza: la pidió explícitamente, y seguir en
+        # silencio le haría creer que la API se auditó.
+        datos = api_mod.leer_fichero(fichero)
+        espec = api_mod.interpretar(
+            datos, bases[0], scope=scope, origen=str(fichero),
+            destructivos=policy.allow_destructive_methods,
+        )
+        if not espec.endpoints:
+            raise ValueError(
+                f"{fichero} se leyó, pero ninguna de sus rutas cae dentro del alcance "
+                "del escaneo")
+    else:
+        espec = await api_mod.descubrir(
+            scope, policy, bases, sesion=sesion,
+            destructivos=policy.allow_destructive_methods,
+        )
+    if espec is None:
+        return None
+
+    vistos = len(crawl.api) if crawl is not None else 0
+    if crawl is not None:
+        conocidos = {e.clave for e in crawl.endpoints}
+        for endpoint in espec.endpoints:
+            if endpoint.clave not in conocidos:
+                conocidos.add(endpoint.clave)
+                crawl.endpoints.append(endpoint)
+    outcome.findings.extend(api_mod.hallazgos(espec, vistos_por_el_crawler=vistos))
+    return espec
+
+
+def _guardar_especificacion(workdir: Path, espec: api_mod.Especificacion) -> Path:
+    """Deja la especificación saneada en el directorio del escaneo.
+
+    Saneada quiere decir con un solo servidor, el del alcance: nuclei y wapiti
+    sacan los objetivos del propio fichero, así que el original les dejaría
+    decidir a quién mandan las cargas de prueba.
+    """
+    ruta = workdir / "openapi.json"
+    ruta.write_text(
+        json.dumps(api_mod.sanear(espec.crudo, espec.base), ensure_ascii=False),
+        encoding="utf-8",
+    )
+    return ruta
 
 
 async def _fase_jwt(scope: Scope, policy: Policy, outcome: ScanOutcome,

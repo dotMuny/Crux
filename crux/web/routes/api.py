@@ -91,6 +91,12 @@ class PeticionDeEscaneo(BaseModel):
     # Roles a comparar entre sí. Hacen falta dos para que la comparación diga
     # algo; con uno se acepta la petición y se avisa.
     roles: list[RolEntrada] = []
+    # Especificación OpenAPI o Swagger de la API, si el analista la tiene a
+    # mano. Sin ella se busca en las rutas habituales de la aplicación, que es
+    # lo que resuelve el caso normal.
+    especificacion_api: str | None = None
+    # Analizar la API que hay por debajo de la interfaz.
+    con_api: bool = True
     # Mete el escaneo en un namespace de red que solo alcanza el alcance
     # declarado. Si no se puede, el escaneo falla: no se degrada a «igual pero
     # sin aislar».
@@ -547,6 +553,9 @@ async def superficie(scan_id: int) -> dict[str, Any]:
             continue
         fila["metodos"].add(punto.get("metodo") or "GET")
         fila["params"].update(punto.get("params") or [])
+        # Los parámetros del cuerpo cuentan igual: en la API son casi todos, y
+        # sin ellos la superficie de un POST a /api/… se dibujaba vacía.
+        fila["params"].update(punto.get("params_cuerpo") or [])
         fila["descubierta_por"].add(punto.get("origen") or "enlace")
 
     # 3. Los hallazgos, que pueden caer en rutas que ninguna de las dos vio
@@ -996,6 +1005,8 @@ async def lanzar(peticion: PeticionDeEscaneo, request: Request) -> dict[str, Any
         only=peticion.only,
         credenciales=credenciales,
         roles=roles,
+        con_api=peticion.con_api,
+        especificacion=peticion.especificacion_api,
         sandbox=peticion.sandbox,
     )
     return {**trabajo.como_dict(), "avisos": avisos}

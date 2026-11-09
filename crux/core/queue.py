@@ -170,6 +170,8 @@ class ColaDeTrabajos:
         extra_hosts: Sequence[str] = (),
         only: Sequence[str] | None = None,
         con_crawler: bool = True,
+        con_api: bool = True,
+        especificacion: str | None = None,
         tipo: str = "web",
         credenciales: Any = None,
         roles: Sequence[tuple[str, str, Any]] = (),
@@ -198,7 +200,8 @@ class ColaDeTrabajos:
             {"only": only}
             if tipo == "code" else
             {"allow_public": allow_public, "extra_hosts": list(extra_hosts),
-             "only": only, "con_crawler": con_crawler,
+             "only": only, "con_crawler": con_crawler, "con_api": con_api,
+             "especificacion": especificacion,
              "credenciales": credenciales, "roles": list(roles)}
         )
         trabajo._tarea = asyncio.create_task(self._ejecutar(trabajo, **extra))
@@ -371,6 +374,8 @@ class ColaDeTrabajos:
             "extra_hosts": list(kwargs.get("extra_hosts", ())),
             "only": list(kwargs["only"]) if kwargs.get("only") is not None else None,
             "con_crawler": kwargs.get("con_crawler", True),
+            "con_api": kwargs.get("con_api", True),
+            "especificacion": kwargs.get("especificacion") or None,
             "credenciales": serializar_credenciales(kwargs.get("credenciales")),
             "roles": serializar_roles(kwargs.get("roles", ())),
         }

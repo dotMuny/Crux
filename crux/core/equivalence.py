@@ -49,6 +49,10 @@ SOURCE_RANK: Final[dict[str, int]] = {
     "semgrep": 12,
     "trivy": 12,
     "nuclei": 10,
+    # La pasada que lee la especificación de la API: la misma herramienta, así
+    # que el mismo rango. Sin esta entrada valdría 0 y un hallazgo suyo habría
+    # perdido siempre contra cualquier otro al deduplicar.
+    "nuclei-api": 10,
     "wapiti": 8,
     "nikto": 5,
 }

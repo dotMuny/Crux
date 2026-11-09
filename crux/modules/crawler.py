@@ -21,15 +21,22 @@ claro importa: aquí hay detección, no contención.
 from __future__ import annotations
 
 import contextlib
+import json
 import re
 from dataclasses import dataclass, field
 from typing import Any, Callable, Iterable, Sequence
-from urllib.parse import parse_qsl, urljoin, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
 
 from ..core.egress import CHROMIUM_ARGS
 from ..core.policy import Policy
 from ..core.scope import Scope
-from .auth import Sesion, parece_desconectado, parece_proveedor, sigue_viva
+from .auth import (
+    RegistroDeRed,
+    Sesion,
+    parece_desconectado,
+    parece_proveedor,
+    sigue_viva,
+)
 
 # Rutas que no aportan nada al análisis y sí consumen presupuesto de páginas.
 RUIDO = re.compile(
@@ -38,16 +45,94 @@ RUIDO = re.compile(
 # Enlaces que cierran la sesión: seguirlos deja al crawler fuera sin avisar.
 PELIGROSOS = re.compile(r"(logout|signout|cerrar-sesion|salir|delete|eliminar)", re.I)
 
+# Tipos de petición del registro de red que son llamadas de la aplicación a su
+# API, no navegación ni recursos.
+TIPOS_DE_API = ("xhr", "fetch", "eventsource", "websocket")
+
+# Claves cuyo valor no se guarda nunca. El cuerpo de la petición de acceso
+# lleva la contraseña en claro, y la superficie del escaneo se persiste: lo que
+# hace falta para auditar es el nombre del parámetro, no su valor.
+CLAVE_SENSIBLE = re.compile(
+    r"(pass|clave|contrase|secret|token|auth|cookie|session|sesion|otp|mfa|"
+    r"pin|cvv|cvc|tarjeta|card|iban|dni|nif|ssn|apikey|api_key|private)", re.I
+)
+TACHADO = "***"
+# Un cuerpo más largo que esto no se guarda entero: no aporta más superficie y
+# engorda la base de datos y el informe.
+CUERPO_MAXIMO = 4096
+
+
+def _tachar(valor: Any) -> Any:
+    if isinstance(valor, dict):
+        return {k: (TACHADO if CLAVE_SENSIBLE.search(str(k)) else _tachar(v))
+                for k, v in valor.items()}
+    if isinstance(valor, list):
+        return [_tachar(v) for v in valor]
+    return valor
+
+
+def leer_cuerpo(cuerpo: str, tipo_contenido: str) -> tuple[list[str], str]:
+    """Las claves que lleva un cuerpo de petición, y el cuerpo ya tachado.
+
+    Devuelve `([], "")` para lo que no se puede leer como parámetros: una
+    subida de ficheros, un cuerpo binario, un JSON mal formado. Decirlo con una
+    lista vacía, y no inventar parámetros, importa: lo que entra aquí decide
+    dónde van a inyectar las fases activas.
+    """
+    cuerpo = (cuerpo or "").strip()
+    tipo = (tipo_contenido or "").lower()
+    if not cuerpo or "multipart/" in tipo or "octet-stream" in tipo:
+        return [], ""
+    if len(cuerpo) > CUERPO_MAXIMO:
+        return [], ""
+
+    if "json" in tipo or cuerpo.startswith(("{", "[")):
+        try:
+            datos = json.loads(cuerpo)
+        except ValueError:
+            return [], ""
+        if isinstance(datos, dict):
+            claves = [str(k) for k in datos]
+        elif isinstance(datos, list) and datos and isinstance(datos[0], dict):
+            # Una lista de objetos: los parámetros son los del primero.
+            claves = [str(k) for k in datos[0]]
+        else:
+            claves = []
+        return claves, json.dumps(_tachar(datos), ensure_ascii=False)
+
+    if "x-www-form-urlencoded" in tipo or ("=" in cuerpo and "\n" not in cuerpo):
+        pares = parse_qsl(cuerpo, keep_blank_values=True)
+        if not pares:
+            return [], ""
+        return (
+            [k for k, _ in pares],
+            urlencode([(k, TACHADO if CLAVE_SENSIBLE.search(k) else v) for k, v in pares]),
+        )
+
+    return [], ""
+
 
 @dataclass(slots=True)
 class Endpoint:
-    """Una ruta alcanzable, con los parámetros que admite."""
+    """Una ruta alcanzable, con los parámetros que admite.
+
+    En una aplicación con interfaz, los parámetros van en la query y en los
+    campos de un formulario. En la API que hay por debajo no: van en el cuerpo
+    de un POST, casi siempre en JSON. Guardar solo la URL dejaba fuera justo la
+    superficie donde más se inyecta, así que el endpoint lleva también el método
+    real, el tipo de contenido y un cuerpo de ejemplo —el que mandó la propia
+    aplicación, o uno construido a partir de la especificación—.
+    """
 
     url: str
     metodo: str = "GET"
     params: list[str] = field(default_factory=list)
-    origen: str = "enlace"          # semilla | enlace | formulario | js
+    # semilla | enlace | formulario | js | api | especificacion
+    origen: str = "enlace"
     tipo_contenido: str = ""
+    # Cuerpo tal como lo manda la aplicación, y las claves que lleva dentro.
+    cuerpo: str = ""
+    params_cuerpo: list[str] = field(default_factory=list)
 
     @property
     def clave(self) -> tuple[str, str, tuple[str, ...]]:
@@ -55,8 +140,13 @@ class Endpoint:
         return (
             self.metodo,
             urlunsplit((partes.scheme, partes.netloc, partes.path, "", "")),
-            tuple(sorted(self.params)),
+            tuple(sorted([*self.params, *self.params_cuerpo])),
         )
+
+    @property
+    def es_api(self) -> bool:
+        """¿Esto lo llama el JavaScript o la especificación, no un enlace?"""
+        return self.origen in ("js", "api", "especificacion")
 
 
 @dataclass(slots=True)
@@ -83,9 +173,19 @@ class ResultadoCrawl:
         return list(dict.fromkeys(e.url for e in self.endpoints))
 
     @property
+    def api(self) -> list[Endpoint]:
+        """Lo que no es navegación: las llamadas de la API."""
+        return [e for e in self.endpoints if e.es_api]
+
+    @property
     def con_parametros(self) -> list[Endpoint]:
-        """Los que sirven para fuzzing: sin parámetros no hay dónde inyectar."""
-        return [e for e in self.endpoints if e.params]
+        """Los que sirven para fuzzing: sin parámetros no hay dónde inyectar.
+
+        Un POST a la API sin query pero con cuerpo JSON tiene dónde inyectar, y
+        antes no entraba aquí: las fases activas lo saltaban por no llevar nada
+        en la URL.
+        """
+        return [e for e in self.endpoints if e.params or e.params_cuerpo]
 
 
 def nuevo_navegador(headless: bool = True, *, extra: Sequence[str] = (),
@@ -128,10 +228,16 @@ class Crawler:
         self.policy = policy
         self.reentrar = reentrar
         self.resultado = ResultadoCrawl(sesion=sesion)
+        self.red: Any = None
 
     # -- recorrido ----------------------------------------------------------
     def recorrer(self, semillas: Sequence[str]) -> ResultadoCrawl:
-        driver = nuevo_navegador()
+        # Con el registro de red activado: es de donde salen el método y el
+        # cuerpo de cada llamada a la API. La API de rendimiento, que es lo que
+        # se usaba antes, enumera las peticiones pero no dice ni una cosa ni la
+        # otra, así que un POST con JSON se apuntaba como un GET sin parámetros.
+        driver = nuevo_navegador(registrar_red=True)
+        self.red = RegistroDeRed(driver)
         try:
             driver.set_page_load_timeout(max(self.policy.request_timeout, 15))
             if self.resultado.sesion is not None:
@@ -233,6 +339,11 @@ class Crawler:
                 if host and host not in self.resultado.proveedores_vistos:
                     self.resultado.proveedores_vistos.append(host)
             return
+        # Primero el registro de red, que trae método y cuerpo. Lo que salga de
+        # ahí no se vuelve a apuntar desde la API de rendimiento, que lo daría
+        # como un GET sin parámetros y dejaría un endpoint falso en el informe.
+        ya_apuntadas = self._api_del_registro()
+
         try:
             recursos = driver.execute_script(
                 "return performance.getEntriesByType('resource')"
@@ -255,12 +366,62 @@ class Crawler:
                 continue
             if RUIDO.search(nombre):
                 continue
-            if iniciador in ("fetch", "xmlhttprequest"):
+            if iniciador in ("fetch", "xmlhttprequest") and nombre not in ya_apuntadas:
                 partes = urlsplit(nombre)
                 self._anotar(Endpoint(
                     url=nombre, origen="js",
                     params=[k for k, _ in parse_qsl(partes.query)],
                 ))
+
+    def _api_del_registro(self) -> set[str]:
+        """Las llamadas a la API que hizo la página, con método y cuerpo.
+
+        Es la diferencia entre ver que la aplicación habla con `/api/pedidos` y
+        poder auditarla: el método real —un POST, un PUT, un DELETE— y los
+        parámetros que van en el cuerpo, que en una API REST son casi todos.
+
+        Devuelve las URL apuntadas, para que la lectura de la API de
+        rendimiento no las duplique con el método equivocado.
+
+        Chromium no incluye el cuerpo cuando es muy grande. Entonces el
+        endpoint queda con su método y sin parámetros de cuerpo, que es la
+        verdad: se sabe que hay un POST ahí, no qué lleva dentro.
+        """
+        vistas: set[str] = set()
+        if self.red is None:
+            return vistas
+        with contextlib.suppress(Exception):
+            self.red.leer()
+        peticiones = self.red.recoger()
+
+        for p in peticiones:
+            url = p.get("url") or ""
+            if not url.startswith(("http://", "https://")):
+                continue
+            if (p.get("tipo") or "").lower() not in TIPOS_DE_API:
+                continue
+            if not self.scope.allows_url(url):
+                # Igual que con los recursos: hablar con el proveedor de
+                # identidad es el protocolo de acceso, no una dependencia.
+                if self.scope.es_proveedor(url) or parece_proveedor(url):
+                    continue
+                if url not in self.resultado.fuera_de_alcance:
+                    self.resultado.fuera_de_alcance.append(url)
+                continue
+
+            tipo = (p.get("cabeceras") or {}).get("content-type", "")
+            claves, cuerpo = leer_cuerpo(p.get("cuerpo", ""), tipo)
+            self._anotar(Endpoint(
+                url=url,
+                metodo=(p.get("metodo") or "GET").upper(),
+                params=[k for k, _ in parse_qsl(urlsplit(url).query)],
+                origen="api",
+                tipo_contenido=tipo.split(";")[0].strip(),
+                cuerpo=cuerpo,
+                params_cuerpo=claves,
+            ))
+            vistas.add(url)
+        return vistas
 
     def _esperar_asiento(self, driver, intentos: int = 6) -> None:
         """Espera hasta que el número de peticiones deje de crecer."""

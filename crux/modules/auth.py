@@ -224,6 +224,11 @@ class _Red:
                 "id": p.get("requestId"), "url": peticion.get("url", ""),
                 "metodo": peticion.get("method", ""), "tipo": p.get("type", ""),
                 "cabeceras": {k.lower(): v for k, v in cabeceras.items()},
+                # El cuerpo es lo que hace falta para auditar una API: en un
+                # POST a /api/… los parámetros van ahí, no en la URL. Chromium
+                # lo da en `postData` cuando no es demasiado grande.
+                "cuerpo": peticion.get("postData") or "",
+                "tiene_cuerpo": bool(peticion.get("hasPostData")),
             })
             nuevas += 1
         return nuevas
@@ -236,6 +241,23 @@ class _Red:
 
     def documentos(self) -> list[str]:
         return [p["url"] for p in self.peticiones if p["tipo"] == "Document" and p["url"]]
+
+    def recoger(self) -> list[dict[str, Any]]:
+        """Devuelve lo registrado hasta ahora y lo suelta.
+
+        Para quien lee por tandas —el crawler, una vez por página—: así sabe
+        qué es nuevo y no acumula. El login, en cambio, mira `peticiones`
+        entera, porque busca una cabecera que pudo aparecer en cualquier salto.
+        Un recorrido de tres mil páginas guardaría cientos de miles de
+        peticiones con sus cabeceras sin que nadie vuelva a mirarlas.
+        """
+        peticiones, self.peticiones = self.peticiones, []
+        return peticiones
+
+
+# El mismo lector lo usan el login —para la cabecera Authorization de una SPA—
+# y el crawler —para el método y el cuerpo de cada llamada a la API—.
+RegistroDeRed = _Red
 
 
 def _host(url: str) -> str:

@@ -67,6 +67,11 @@ TRADUCCION: dict[str, tuple[str, Severity, str, str]] = {
 MODULOS_SEGUROS = ("sql", "xss", "redirect", "crlf")
 MODULOS_AGRESIVOS = MODULOS_SEGUROS + ("exec", "file", "ssrf", "xxe", "permanentxss")
 
+# Cuántas llamadas de la API se le dan como punto de arranque. Su crawler sigue
+# desde cada una, así que no hace falta pasarle la lista entera; con unas
+# decenas cubre la API y el escaneo no se va de tiempo.
+MAX_ARRANQUES = 40
+
 
 @register
 class WapitiAdapter(Adapter):
@@ -111,6 +116,7 @@ class WapitiAdapter(Adapter):
             # Nivel 1 de detalle: incluye la petición HTTP de cada hallazgo,
             # que es lo que se muestra como evidencia.
             "--detailed-report", "1",
+            *argumentos_de_api(ctx),
             *argumentos_de_sesion(ctx),
         ]
 
@@ -189,6 +195,31 @@ def _absoluto(ruta: str, ctx) -> str:
 # deja el resto del escaneo sin autenticar.
 SALIDAS = ("/logout", "/signout", "/salir", "/cerrar-sesion", "/logoff", "/oauth2/sign_out",
            "/protocol/openid-connect/logout")
+
+
+def argumentos_de_api(ctx: ScanContext) -> list[str]:
+    """Cómo darle a wapiti la API, que su propio crawler no encuentra.
+
+    Dos vías, y las dos hacen falta:
+
+    - `--swagger`: la especificación, de donde saca cada ruta con su método y
+      sus parámetros. Se le pasa la copia saneada, con un solo servidor.
+    - `-s`: las llamadas que el navegador vio hacer a la interfaz. Su crawler
+      no ejecuta JavaScript, así que en una aplicación de una sola página no
+      llega a ninguna por su cuenta: arrancaba en la portada, no veía enlaces y
+      se quedaba ahí. Esto es lo que explica un informe casi vacío en una SPA.
+    """
+    argv: list[str] = []
+    especificacion = ctx.especificacion_api
+    if especificacion is not None:
+        argv += ["--swagger", str(especificacion)]
+
+    arranques = [e["url"] for e in ctx.endpoints_api
+                 if e.get("url") and ctx.scope is not None
+                 and ctx.scope.allows_url(e["url"])]
+    for url in list(dict.fromkeys(arranques))[:MAX_ARRANQUES]:
+        argv += ["-s", url]
+    return argv
 
 
 def argumentos_de_sesion(ctx: ScanContext) -> list[str]:

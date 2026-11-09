@@ -35,6 +35,42 @@ EXPECTED_FINDINGS: dict[str, str] = {
     "jwt-secreto-debil": "El JWT se firma con el secreto «secret»",
     "jwt-sin-caducidad": "El JWT emitido no incluye exp",
     "jwt-claims-sensibles": "El JWT lleva la contraseña en el payload",
+    "api-sql-injection": "POST /api/buscar concatena el campo «q» del cuerpo JSON",
+    "api-sin-autorizacion": "GET /api/facturas devuelve las facturas de todos",
+}
+
+# La especificación que publica la aplicación. Existe para que los tests
+# comprueben el camino completo: encontrarla, leerla, y que las fases activas
+# lleguen a un parámetro que solo viaja en el cuerpo de un POST.
+OPENAPI: dict = {
+    "openapi": "3.0.1",
+    "info": {"title": "Facturación interna", "version": "1.0"},
+    "servers": [{"url": "/"}],
+    "paths": {
+        "/api/facturas": {
+            "get": {
+                "summary": "Listado de facturas",
+                "parameters": [{"name": "cliente", "in": "query",
+                                "schema": {"type": "string"}}],
+            },
+        },
+        "/api/buscar": {
+            "post": {
+                "summary": "Búsqueda",
+                "requestBody": {"content": {"application/json": {"schema": {
+                    "type": "object",
+                    "properties": {"q": {"type": "string", "example": "ana"}},
+                }}}},
+            },
+        },
+        "/api/facturas/{factura_id}": {
+            "delete": {
+                "summary": "Borrar una factura",
+                "parameters": [{"name": "factura_id", "in": "path",
+                                "schema": {"type": "integer"}}],
+            },
+        },
+    },
 }
 
 # Credenciales de juguete. El fixture necesita dos roles para poder comprobar
@@ -94,7 +130,8 @@ def create_app() -> Flask:
             <ul><li><a href="/greet?name=equipo">Saludo</a></li>
             <li><a href="/invoice/1001">Factura 1001</a></li>
             <li><a href="/files/">Documentos</a></li>
-            <li><a href="/api/me">Mi perfil</a></li></ul>
+            <li><a href="/api/me">Mi perfil</a></li>
+            <li><a href="/panel">Panel</a></li></ul>
             <script src="/static/app.js"></script></body></html>"""
         )
         # cookie-insecure-flags: sin Secure, sin HttpOnly, sin SameSite.
@@ -258,6 +295,62 @@ def create_app() -> Flask:
         if not hmac.compare_digest(_b64e(expected), signature):
             return make_response(jsonify({"error": "firma inválida"}), 401)
         return make_response(jsonify({"user": payload, "verified": True}))
+
+    @app.route("/openapi.json")
+    def openapi() -> Response:
+        return make_response(jsonify(OPENAPI))
+
+    @app.route("/api/facturas")
+    def api_facturas() -> Response:
+        # api-sin-autorizacion: devuelve todo a cualquiera, sin mirar la sesión.
+        cliente = request.args.get("cliente", "")
+        conexion = _db()
+        conexion.row_factory = sqlite3.Row
+        filas = conexion.execute(
+            "SELECT i.id, u.name AS cliente, i.total FROM invoices i "
+            f"JOIN users u ON u.id = i.owner_id WHERE u.name LIKE '%{cliente}%'"
+        ).fetchall()
+        return make_response(jsonify([dict(f) for f in filas]))
+
+    @app.route("/api/buscar", methods=["POST"])
+    def api_buscar() -> Response:
+        # api-sql-injection: el parámetro viaja en el cuerpo JSON, no en la URL.
+        # Es el caso que un escaneo que solo mira enlaces no puede alcanzar.
+        datos = request.get_json(silent=True) or {}
+        q = str(datos.get("q", ""))
+        conexion = _db()
+        conexion.row_factory = sqlite3.Row
+        consulta = ("SELECT i.id, i.total FROM invoices i JOIN users u ON u.id = i.owner_id "
+                    f"WHERE u.name = '{q}'")
+        try:
+            filas = conexion.execute(consulta).fetchall()
+        except sqlite3.Error as exc:
+            # Con el mismo formato que /search, y por el mismo motivo: el nombre
+            # de la excepción es lo que hace que un escáner reconozca el motor.
+            # Con `str(exc)` a secas no lo reconocía ninguno, y el fixture no
+            # habría demostrado nada.
+            return make_response(jsonify({
+                "error": f"{type(exc).__module__}.{type(exc).__name__}: {exc}",
+                "query": consulta,
+            }), 500)
+        return make_response(jsonify([dict(f) for f in filas]))
+
+    @app.route("/api/facturas/<int:factura_id>", methods=["DELETE"])
+    def api_borrar(factura_id: int) -> Response:
+        return make_response(jsonify({"borrada": factura_id}))
+
+    @app.route("/panel")
+    def panel() -> Response:
+        # Una página que habla con su API desde JavaScript, como una SPA: el
+        # crawler tiene que capturar el POST y el cuerpo, no solo la URL.
+        return make_response("""<!doctype html><html><head><title>Panel</title></head>
+<body><h1>Panel</h1><div id="r">cargando…</div><script>
+fetch("/api/facturas?cliente=ana").then(r => r.json()).then(f => {
+  document.getElementById("r").textContent = f.length + " facturas";
+});
+fetch("/api/buscar", {method: "POST", headers: {"Content-Type": "application/json"},
+  body: JSON.stringify({q: "ana", clave: "sesamo"})});
+</script></body></html>""")
 
     @app.route("/files/")
     def files() -> Response:

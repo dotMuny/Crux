@@ -117,6 +117,8 @@ async def _ejecutar(trabajo: dict[str, Any]) -> None:
             extra_hosts=trabajo.get("extra_hosts", []),
             only=trabajo.get("only"),
             con_crawler=trabajo.get("con_crawler", True),
+            con_api=trabajo.get("con_api", True),
+            especificacion=trabajo.get("especificacion"),
             credenciales=deserializar_credenciales(trabajo.get("credenciales")),
             roles=deserializar_roles(trabajo.get("roles", [])),
             on_progress=progreso,

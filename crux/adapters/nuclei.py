@@ -153,9 +153,9 @@ class NucleiAdapter(Adapter):
                 f"{paths.nuclei_templates_dir()}` con red disponible."
             )
 
-        targets_file = ctx.artifact("nuclei-targets.txt")
+        targets_file = ctx.artifact(f"{self.name}-targets.txt")
         targets_file.write_text("\n".join(urls) + "\n", encoding="utf-8")
-        results_file = ctx.artifact("nuclei-results.jsonl")
+        results_file = ctx.artifact(f"{self.name}-results.jsonl")
 
         policy = ctx.policy
         argv = [
@@ -200,7 +200,7 @@ class NucleiAdapter(Adapter):
     def parse(self, run: ToolRun, ctx: ScanContext) -> Iterable[Finding]:
         # nuclei escribe los resultados al fichero de `-o`; stdout lleva el
         # progreso. Se lee el fichero y, si no existe, se cae a stdout.
-        results_file = ctx.artifact("nuclei-results.jsonl")
+        results_file = ctx.artifact(f"{self.name}-results.jsonl")
         if results_file.exists():
             raw = results_file.read_text(encoding="utf-8", errors="replace")
         else:
@@ -314,6 +314,63 @@ class NucleiAdapter(Adapter):
                 "ip": record.get("ip"),
             },
         )
+
+
+@register
+class NucleiApiAdapter(NucleiAdapter):
+    """Segunda pasada de nuclei, leyendo la especificación de la API.
+
+    nuclei sabe leer un OpenAPI y fuzzear lo que describe: se comprobó que de
+    `POST /pedidos` con un cuerpo JSON saca peticiones POST con ese cuerpo, que
+    es justo lo que no se puede hacer dándole una lista de URL. Pero el modo de
+    entrada es uno por ejecución —`-im openapi` se aplica al fichero de `-l`—,
+    así que no cabe en la pasada normal y va aparte.
+
+    Dos consecuencias que hay que decir:
+
+    - Los objetivos salen del fichero. Por eso se le da la copia saneada, con un
+      solo servidor y el host del alcance.
+    - Solo corre con el perfil que autoriza inyección, porque fuzzear es
+      inyectar. Con los demás perfiles la API la cubre wapiti con `--swagger`.
+    """
+
+    name = "nuclei-api"
+
+    def build_argv(self, ctx: ScanContext) -> list[str] | None:
+        especificacion = ctx.especificacion_api
+        if especificacion is None or not ctx.policy.allow_injection:
+            return None
+        templates = self.templates_dir()
+        if templates is None:
+            return None
+
+        resultados = ctx.artifact(f"{self.name}-results.jsonl")
+        policy = ctx.policy
+        argv = [
+            "nuclei",
+            "-duc", "-ni", "-nc", "-jsonl",
+            "-o", str(resultados),
+            "-l", str(especificacion),
+            "-im", "openapi",
+            # Sin esto, una especificación con una variable sin resolver aborta
+            # la ejecución entera en vez de saltarse esa ruta.
+            "-sfv",
+            "-t", str(templates),
+            "-pt", "http",
+            "-dast",
+            "-s", policy.nuclei_severities,
+            "-rl", str(policy.nuclei_rate_limit),
+            "-c", str(policy.concurrency),
+            "-timeout", str(int(policy.request_timeout)),
+            "-retries", "1",
+            "-stats", "-si", "30",
+            "-disable-clustering",
+            "-etags", "dos",
+        ]
+        secretos = secretos_de_sesion(ctx)
+        if secretos is not None:
+            argv += ["-sf", str(secretos)]
+        return argv
 
 
 def _absolute(target: str, record: dict) -> str:

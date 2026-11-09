@@ -70,8 +70,9 @@ del analista, te lo dice.
 crux scan web https://facturacion.intra.corp/ --project "Intranet"
 ```
 
-Descubre, toma huella, recorre con navegador real, lanza nuclei acotado a lo
-que la huella dice que hay delante, y aplica las comprobaciones propias.
+Descubre, toma huella, recorre con navegador real, audita la API que hay por
+debajo, lanza nuclei acotado a lo que la huella dice que hay delante, y aplica
+las comprobaciones propias.
 
 Con autenticación y comparación de roles:
 
@@ -102,7 +103,46 @@ hay nada que comparar y te lo advierte. Cada rol entra en un navegador limpio:
 con un proveedor de SSO, compartirlo hacía que el segundo entrase como el
 primero.
 
-Para una API con token en cabecera:
+### La API que hay por debajo
+
+Casi toda aplicación interna es una interfaz que habla con una API, y la API es
+donde está la lógica. Crux la audita por dos vías, sin que haya que pedirlo:
+
+- **Lo que hace la interfaz.** El navegador registra cada llamada con su
+  **método y su cuerpo**: un `POST /api/buscar` con `{"q": "…"}` entra como
+  endpoint con el parámetro `q`, y las fases activas pueden probarlo. Antes se
+  apuntaba la URL y nada más, así que un parámetro que viaja en el cuerpo —en
+  una API REST, casi todos— no tenía dónde probarse.
+- **Lo que declara la especificación.** Si la aplicación publica un OpenAPI o
+  un Swagger —`/openapi.json`, `/v3/api-docs`, `/swagger/v1/swagger.json` y una
+  docena más—, se lee y se convierte en endpoints con sus parámetros y un cuerpo
+  de ejemplo. Eso cubre lo que la interfaz no llega a pulsar. wapiti la recibe
+  con `--swagger` y nuclei hace una segunda pasada en su modo OpenAPI.
+
+Si la tienes a mano y la aplicación no la publica, pásala:
+
+```bash
+crux scan web https://facturacion.intra.corp/ --openapi ./openapi.yaml
+```
+
+Tres cosas que conviene saber:
+
+- **La especificación es dato del objetivo, no configuración.** Declara sus
+  propios servidores, y uno puede apuntar a otro host. De un servidor declarado
+  se toma solo la ruta: el host es siempre el del alcance. Que declare un
+  servidor de fuera se cuenta como hallazgo informativo, pero no se toca.
+- **`PUT`, `PATCH` y `DELETE` no se tocan** salvo con el perfil agresivo, que
+  es el que autoriza métodos destructivos. `DELETE /pedidos/{id}` está en toda
+  especificación, y en la aplicación de un cliente borra un pedido de verdad.
+- **De los cuerpos capturados se guardan los nombres, no los valores.** El
+  cuerpo de la petición de acceso lleva la contraseña: los valores de los
+  campos que lo parecen —`password`, `token`, `clave`, `cvv`…— se sustituyen
+  por `***` antes de que nada toque el disco.
+
+Con `--sin-api` se apaga todo esto y el escaneo se queda en lo que vea el
+navegador.
+
+Para una API sin interfaz, con token en cabecera:
 
 ```bash
 crux scan web https://api.intra.corp/ --header 'Authorization: Bearer …'
@@ -395,7 +435,7 @@ casos habituales:
 
 ## Por qué está hecho así
 
-`docs/decisiones.md` recoge 49 decisiones que no se deducen leyendo el código,
+`docs/decisiones.md` recoge 50 decisiones que no se deducen leyendo el código,
 cada una con su motivo y con la evidencia que la respalda. Están ahí para que
 no se discutan desde cero, y para que quien no esté de acuerdo sepa
 exactamente qué está cambiando.
